@@ -4,7 +4,13 @@ import Papa from 'papaparse';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { 
+    getAuth, 
+    onAuthStateChanged, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut 
+} from "firebase/auth";
 import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, writeBatch } from "firebase/firestore";
 
 // --- ENVIRONMENT VARIABLES ---
@@ -22,10 +28,110 @@ const firebaseConfig = {
     appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Initialize Firebase outside the component to prevent re-initialization
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ==========================================
+// AUTHENTICATION SCREEN
+// ==========================================
+const AuthScreen = () => {
+    const [isLogin, setIsLogin] = useState(true);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+
+        try {
+            if (isLogin) {
+                await signInWithEmailAndPassword(auth, email, password);
+            } else {
+                await createUserWithEmailAndPassword(auth, email, password);
+            }
+        } catch (err) {
+            console.error("Auth error:", err);
+            // Traduzione degli errori più comuni di Firebase
+            if (err.code === 'auth/email-already-in-use') setError('Questa email è già registrata.');
+            else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') setError('Credenziali non valide. Riprova.');
+            else if (err.code === 'auth/weak-password') setError('La password deve avere almeno 6 caratteri.');
+            else setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4">
+            <div className="w-full max-w-md bg-surface border border-surfaceLight rounded-2xl shadow-2xl p-8 animate-fade-in">
+                <div className="flex justify-center items-center gap-3 mb-8">
+                    <div className="bg-primary text-white w-12 h-12 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(229,9,20,0.4)]">
+                        <i className="fas fa-play text-xl"></i>
+                    </div>
+                    <h1 className="text-4xl font-bold tracking-tight text-white">TV<span className="text-primary">Tensei</span></h1>
+                </div>
+
+                <h2 className="text-2xl font-bold text-white mb-6 text-center">
+                    {isLogin ? 'Bentornato Otaku' : 'Inizia il tuo viaggio'}
+                </h2>
+
+                {error && (
+                    <div className="bg-primary/20 border border-primary text-white p-3 rounded-lg flex items-center gap-3 mb-6 text-sm">
+                        <i className="fas fa-exclamation-triangle text-primary"></i>
+                        <p>{error}</p>
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-textMuted mb-1">Email</label>
+                        <input 
+                            type="email" 
+                            required 
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full bg-background border border-surfaceLight rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary focus:shadow-[0_0_10px_rgba(229,9,20,0.2)] transition-all"
+                            placeholder="tu@email.com"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-textMuted mb-1">Password</label>
+                        <input 
+                            type="password" 
+                            required 
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full bg-background border border-surfaceLight rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary focus:shadow-[0_0_10px_rgba(229,9,20,0.2)] transition-all"
+                            placeholder="Minimo 6 caratteri"
+                        />
+                    </div>
+                    
+                    <button 
+                        type="submit" 
+                        disabled={isLoading}
+                        className="w-full bg-primary hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-colors mt-6 shadow-[0_0_15px_rgba(229,9,20,0.3)] disabled:opacity-50"
+                    >
+                        {isLoading ? <i className="fas fa-spinner fa-spin"></i> : (isLogin ? 'Accedi' : 'Registrati')}
+                    </button>
+                </form>
+
+                <div className="mt-6 text-center text-sm text-textMuted">
+                    {isLogin ? "Non hai un account? " : "Hai già un account? "}
+                    <button 
+                        onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                        className="text-white hover:text-primary font-bold transition-colors"
+                    >
+                        {isLogin ? 'Registrati ora' : 'Accedi'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ==========================================
 // UI COMPONENTS
@@ -73,12 +179,12 @@ const ShowListRow = ({ show, openShowModal, status }) => (
         <div className="flex-1 min-w-0">
             <h4 className="text-white font-bold text-sm md:text-lg truncate">{show.name}</h4>
             <div className="mt-1 md:mt-2">
-                {status === 'completed' && <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Completed</span>}
-                {status === 'toStart' && <span className="text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded">Not Started</span>}
+                {status === 'completed' && <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Completata</span>}
+                {status === 'toStart' && <span className="text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded">Da Iniziare</span>}
                 {status === 'inProgress' && (
                     <div className="flex flex-col gap-1 w-full max-w-xs">
                         <div className="flex justify-between text-xs text-textMuted">
-                            <span>Progress</span>
+                            <span>Progresso</span>
                             <span>{show.watched_count} / {show.total_episodes || "?"}</span>
                         </div>
                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden">
@@ -135,8 +241,8 @@ const DiscoverTab = ({ savedShowsData, openShowModal, isShowSaved }) => {
 
     return (
         <div className="p-4 md:p-8 animate-fade-in pb-24">
-            <h2 className="text-3xl font-bold mb-2">Discover</h2>
-            <p className="text-textMuted mb-8">{savedShowsData.length > 0 ? "Recommended for you based on your favorites." : "Trending shows worldwide this week."}</p>
+            <h2 className="text-3xl font-bold mb-2">Esplora</h2>
+            <p className="text-textMuted mb-8">{savedShowsData.length > 0 ? "Raccomandati per te in base ai tuoi preferiti." : "Le serie in tendenza mondiale questa settimana."}</p>
             
             {isLoading ? (
                 <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div>
@@ -145,7 +251,7 @@ const DiscoverTab = ({ savedShowsData, openShowModal, isShowSaved }) => {
                     {recommendations.map(show => <ShowCard key={show.id} show={show} openShowModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
                 </div>
             ) : (
-                <p className="text-textMuted">No recommendations available at the moment.</p>
+                <p className="text-textMuted">Nessuna raccomandazione disponibile al momento.</p>
             )}
         </div>
     );
@@ -153,11 +259,11 @@ const DiscoverTab = ({ savedShowsData, openShowModal, isShowSaved }) => {
 
 const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, searchResults, openShowModal, isShowSaved }) => (
     <div className="p-4 md:p-8 animate-fade-in flex flex-col h-full min-h-[80vh] pb-24">
-        <h2 className="text-3xl font-bold mb-2">Search TMDB</h2>
-        <p className="text-textMuted mb-6">Find your next binge.</p>
+        <h2 className="text-3xl font-bold mb-2">Cerca TMDB</h2>
+        <p className="text-textMuted mb-6">Trova la tua prossima serie da divorare.</p>
         
         <div className="relative mb-6">
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="E.g. Breaking Bad, Naruto, The Office..." className="w-full bg-surface border border-surfaceLight rounded-full py-4 px-6 pl-14 text-white focus:outline-none focus:border-primary focus:shadow-[0_0_15px_rgba(229,9,20,0.3)] transition-all text-lg" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Es. Breaking Bad, Naruto, The Office..." className="w-full bg-surface border border-surfaceLight rounded-full py-4 px-6 pl-14 text-white focus:outline-none focus:border-primary focus:shadow-[0_0_15px_rgba(229,9,20,0.3)] transition-all text-lg" />
             <i className="fas fa-search absolute left-6 top-1/2 -translate-y-1/2 text-textMuted text-lg"></i>
             {isSearching && <i className="fas fa-spinner fa-spin absolute right-6 top-1/2 -translate-y-1/2 text-primary text-lg"></i>}
         </div>
@@ -168,7 +274,7 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
                 {searchResults.map(show => <ShowCard key={show.id} show={show} openShowModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
             </div>
-        ) : (!isSearching && searchQuery.length === 0 && <div className="flex-1 flex flex-col items-center justify-center text-textMuted opacity-50 pb-20"><i className="fas fa-satellite-dish text-6xl mb-4"></i><p className="text-lg">Start typing to search on TMDB</p></div>)}
+        ) : (!isSearching && searchQuery.length === 0 && <div className="flex-1 flex flex-col items-center justify-center text-textMuted opacity-50 pb-20"><i className="fas fa-satellite-dish text-6xl mb-4"></i><p className="text-lg">Inizia a digitare per cercare su TMDB</p></div>)}
     </div>
 );
 
@@ -176,10 +282,16 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
 // MAIN APP COMPONENT
 // ==========================================
 const App = () => {
-    const [activeTab, setActiveTab] = useState('home');
+    // Auth State
     const [user, setUser] = useState(null);
-    const currentUid = user ? user.uid : "tvtensei_user";
+    const [isAuthReady, setIsAuthReady] = useState(false);
+    
+    // UI States
+    const [activeTab, setActiveTab] = useState('home');
+    const [modalDefaultFS, setModalDefaultFS] = useState(() => localStorage.getItem('tvtensei_fs_modal') === 'true');
+    const [isFullscreen, setIsFullscreen] = useState(modalDefaultFS);
 
+    // Data States
     const [savedShowsData, setSavedShowsData] = useState([]);
     const [watchedEpisodesData, setWatchedEpisodesData] = useState([]);
 
@@ -193,9 +305,6 @@ const App = () => {
     const [expandedSeason, setExpandedSeason] = useState(null);
     const [seasonEpisodes, setSeasonEpisodes] = useState({});
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-    
-    const [modalDefaultFS, setModalDefaultFS] = useState(() => localStorage.getItem('tvtensei_fs_modal') === 'true');
-    const [isFullscreen, setIsFullscreen] = useState(modalDefaultFS);
 
     const [upcomingEpisodes, setUpcomingEpisodes] = useState([]);
     const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
@@ -207,22 +316,32 @@ const App = () => {
     const [importStatus, setImportStatus] = useState("");
     const [historyData, setHistoryData] = useState({ completed: [], inProgress: [], toStart: [] });
 
-    // --- FIREBASE INIT ---
+    // --- FIREBASE AUTH INIT ---
     useEffect(() => {
-        let unsubscribe = () => {};
-        const initAuth = async () => {
-            try { 
-                await signInAnonymously(auth); 
-            } catch (e) { 
-                console.error("Auth error", e); 
-            }
-            unsubscribe = onAuthStateChanged(auth, setUser);
-        };
-        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            setIsAuthReady(true);
+        });
         return () => unsubscribe();
     }, []);
 
+    const currentUid = user ? user.uid : null;
+
+    // --- LOGOUT HANDLER ---
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            setSavedShowsData([]);
+            setWatchedEpisodesData([]);
+        } catch (error) {
+            console.error("Errore durante il logout", error);
+        }
+    };
+
+    // --- DATA SYNC ---
     useEffect(() => {
+        if (!currentUid) return;
+        
         const unsubShows = onSnapshot(collection(db, 'users', currentUid, 'shows'), (snapshot) => {
             const newShows = [];
             snapshot.forEach(d => newShows.push({ id: Number(d.id), ...d.data() }));
@@ -243,6 +362,7 @@ const App = () => {
     const getWatchedEpisodeData = (showId, seasonNum, epNum) => watchedEpisodesData.find(w => w.show_id === showId && w.season_number === seasonNum && w.episode_number === epNum);
 
     const toggleFavoriteShow = async (show) => {
+        if(!currentUid) return;
         const docRef = doc(db, 'users', currentUid, 'shows', show.id.toString());
         try {
             if (isShowSaved(show.id)) await deleteDoc(docRef);
@@ -251,10 +371,12 @@ const App = () => {
     };
 
     const rateShow = async (showId, rating) => {
+        if(!currentUid) return;
         try { await setDoc(doc(db, 'users', currentUid, 'shows', showId.toString()), { rating }, { merge: true }); } catch (e) {}
     };
 
     const toggleWatchedEpisode = async (ep, showId) => {
+        if(!currentUid) return;
         const existing = getWatchedEpisodeData(showId, ep.season_number, ep.episode_number);
         try {
             if (existing) await deleteDoc(doc(db, 'users', currentUid, 'watched_episodes', existing.id));
@@ -263,6 +385,7 @@ const App = () => {
     };
 
     const toggleSeasonWatched = async (showId, seasonNumber, episodeCount) => {
+        if(!currentUid) return;
         const batch = writeBatch(db);
         const watchedInSeason = watchedEpisodesData.filter(ep => ep.show_id === showId && ep.season_number === seasonNumber);
         
@@ -293,9 +416,9 @@ const App = () => {
     // --- IMPORT LOGIC ---
     const handleZipImport = async (event) => {
         const file = event.target.files[0];
-        if (!file) return;
+        if (!file || !currentUid) return;
 
-        setIsImporting(true); setImportStatus("Scanning ZIP archive...");
+        setIsImporting(true); setImportStatus("Scansione dell'archivio ZIP in corso...");
 
         try {
             const zip = new JSZip();
@@ -309,7 +432,7 @@ const App = () => {
             for (const [filename, zipEntry] of Object.entries(contents.files)) {
                 if (zipEntry.dir || filename.includes('__MACOSX') || !filename.toLowerCase().endsWith('.csv')) continue;
                 extractedData.filesScanned.push(filename);
-                setImportStatus(`Analyzing file: ${filename}...`);
+                setImportStatus(`Analizzo file: ${filename}...`);
 
                 let csvText = await zipEntry.async("text");
                 csvText = csvText.replace(/^\uFEFF/, ''); 
@@ -345,16 +468,16 @@ const App = () => {
             const uniqueShowsArray = Array.from(extractedData.followedShows);
             const seenEpisodesArray = Array.from(extractedData.seenEpisodes.values());
 
-            if (uniqueShowsArray.length === 0 && seenEpisodesArray.length === 0) throw new Error("CSV files read successfully, but no valid shows or episodes were found.");
+            if (uniqueShowsArray.length === 0 && seenEpisodesArray.length === 0) throw new Error("I CSV sono stati letti ma non è stata riconosciuta alcuna serie o episodio.");
 
-            setImportStatus(`Found ${uniqueShowsArray.length} unique shows. Searching TMDB...`);
+            setImportStatus(`Trovate ${uniqueShowsArray.length} serie uniche. Ricerca su TMDB in corso...`);
 
             const showIdMap = new Map();
             let processed = 0;
             
             for (const showName of uniqueShowsArray) {
                 processed++;
-                if (processed % 5 === 0) setImportStatus(`Syncing TMDB: ${processed}/${uniqueShowsArray.length} shows...`);
+                if (processed % 5 === 0) setImportStatus(`Sincronizzazione TMDB: ${processed}/${uniqueShowsArray.length} serie...`);
                 
                 let cleanName = showName.replace(/\s\(\d{4}\)$/, '').trim(); 
                 try {
@@ -370,7 +493,7 @@ const App = () => {
                 await new Promise(r => setTimeout(r, 100));
             }
 
-            setImportStatus(`Saving to Firebase...`);
+            setImportStatus(`Salvataggio su Firebase in corso...`);
             let batch = writeBatch(db);
             let batchCount = 0;
             let totalShowsImported = 0;
@@ -398,17 +521,17 @@ const App = () => {
                     const compositeId = `${foundShow.id}_S${ep.seasonNum}E${ep.epNum}`;
                     batch.set(doc(db, 'users', currentUid, 'watched_episodes', compositeId), { show_id: foundShow.id, season_number: ep.seasonNum, episode_number: ep.epNum, runtime: 0, watched_at: new Date().toISOString() }, { merge: true });
                     batchCount++; totalEpsImported++;
-                    if (batchCount >= 400) { setImportStatus(`Saved ${totalEpsImported} episodes to Firebase...`); await batch.commit(); batch = writeBatch(db); batchCount = 0; }
+                    if (batchCount >= 400) { setImportStatus(`Salvati ${totalEpsImported} episodi su Firebase...`); await batch.commit(); batch = writeBatch(db); batchCount = 0; }
                 }
             }
 
             if (batchCount > 0) await batch.commit();
-            if (totalShowsImported === 0 && totalEpsImported === 0) throw new Error(`Data extracted, but no matching shows found on TMDB.`);
+            if (totalShowsImported === 0 && totalEpsImported === 0) throw new Error(`Nessuna serie o episodio convertito con successo.`);
 
-            setImportStatus(`Finished! Scanned ${extractedData.filesScanned.length} files. Imported ${totalShowsImported} shows and ${totalEpsImported} episodes.`);
+            setImportStatus(`Finito! File analizzati: ${extractedData.filesScanned.length}. Salvati ${totalShowsImported} serie e ${totalEpsImported} episodi.`);
             setTimeout(() => { setIsImporting(false); setImportStatus(""); }, 5000);
         } catch (error) {
-            console.error("Import error:", error); setImportStatus(`Error: ${error.message}`);
+            console.error("Import error:", error); setImportStatus(`Errore: ${error.message}`);
             setTimeout(() => { setIsImporting(false); setImportStatus(""); }, 10000);
         }
     };
@@ -419,7 +542,7 @@ const App = () => {
             if (searchQuery.trim().length >= 2) {
                 setIsSearching(true); setSearchError('');
                 fetch(`${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchQuery.trim())}&language=en-US`)
-                    .then(r => r.json()).then(data => { setSearchResults(data.results || []); if (data.results.length === 0) setSearchError("No shows found with this name."); })
+                    .then(r => r.json()).then(data => { setSearchResults(data.results || []); if (data.results.length === 0) setSearchError("Nessuna serie trovata con questo nome."); })
                     .catch(err => { setSearchError(err.message); setSearchResults([]); })
                     .finally(() => setIsSearching(false));
             } else if (searchQuery.trim().length === 0) { setSearchResults([]); setSearchError(''); }
@@ -444,7 +567,7 @@ const App = () => {
                         try {
                             const res = await fetch(`${TMDB_BASE_URL}/tv/${s.id}?api_key=${TMDB_API_KEY}&language=en-US`);
                             totalEps = (await res.json()).number_of_episodes;
-                            await setDoc(doc(db, 'users', currentUid, 'shows', s.id.toString()), { total_episodes: totalEps }, { merge: true });
+                            if (currentUid) await setDoc(doc(db, 'users', currentUid, 'shows', s.id.toString()), { total_episodes: totalEps }, { merge: true });
                         } catch(e) { totalEps = 9999; }
                     }
                     s.total_episodes = totalEps;
@@ -463,7 +586,8 @@ const App = () => {
             setIsLoadingCalendar(true);
             try {
                 const promises = savedShowsData.map(async (show) => {
-                    const data = await (await fetch(`${TMDB_BASE_URL}/tv/${show.id}?api_key=${TMDB_API_KEY}&language=en-US`)).json();
+                    const res = await fetch(`${TMDB_BASE_URL}/tv/${show.id}?api_key=${TMDB_API_KEY}&language=en-US`);
+                    const data = await res.json();
                     if (data.next_episode_to_air) return { showId: data.id, showName: data.name, posterPath: data.poster_path, episode: data.next_episode_to_air };
                     return null;
                 });
@@ -484,7 +608,8 @@ const App = () => {
                 const avgRuntimes = {};
                 for (let showId of missingRuntimeShows) {
                     try {
-                        const data = await (await fetch(`${TMDB_BASE_URL}/tv/${showId}?api_key=${TMDB_API_KEY}&language=en-US`)).json();
+                        const res = await fetch(`${TMDB_BASE_URL}/tv/${showId}?api_key=${TMDB_API_KEY}&language=en-US`);
+                        const data = await res.json();
                         avgRuntimes[showId] = (data.episode_run_time && data.episode_run_time.length > 0) ? data.episode_run_time[0] : (data.last_episode_to_air?.runtime || 45); 
                     } catch (e) { avgRuntimes[showId] = 45; }
                 }
@@ -509,9 +634,10 @@ const App = () => {
     const openShowModal = async (show) => {
         setIsFullscreen(modalDefaultFS); setSelectedShow(show); setShowDetails(null); setExpandedSeason(null); setSeasonEpisodes({}); setIsLoadingDetails(true);
         try {
-            const data = await (await fetch(`${TMDB_BASE_URL}/tv/${show.id}?api_key=${TMDB_API_KEY}&language=en-US`)).json();
+            const res = await fetch(`${TMDB_BASE_URL}/tv/${show.id}?api_key=${TMDB_API_KEY}&language=en-US`);
+            const data = await res.json();
             setShowDetails(data);
-            if (isShowSaved(show.id)) await setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { total_episodes: data.number_of_episodes }, { merge: true });
+            if (currentUid && isShowSaved(show.id)) await setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { total_episodes: data.number_of_episodes }, { merge: true });
         } catch (err) {} finally { setIsLoadingDetails(false); }
     };
     const toggleSeason = async (tvId, seasonNumber) => {
@@ -519,8 +645,11 @@ const App = () => {
         setExpandedSeason(seasonNumber);
         if (!seasonEpisodes[seasonNumber]) {
             try {
-                const data = await (await fetch(`${TMDB_BASE_URL}/tv/${tvId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=en-US`)).json();
-                setSeasonEpisodes(prev => ({ ...prev, [seasonNumber]: data.episodes }));
+                const res = await fetch(`${TMDB_BASE_URL}/tv/${tvId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}&language=en-US`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setSeasonEpisodes(prev => ({ ...prev, [seasonNumber]: data.episodes }));
+                }
             } catch (err) {}
         }
     };
@@ -529,7 +658,23 @@ const App = () => {
     const toggleDefaultFS = () => { const newVal = !modalDefaultFS; setModalDefaultFS(newVal); localStorage.setItem('tvtensei_fs_modal', newVal); };
 
     // ==========================================
-    // MAIN RENDER
+    // RENDER: LOADING OR AUTH OR APP
+    // ==========================================
+    if (!isAuthReady) {
+        return (
+            <div className="h-screen w-screen bg-background flex flex-col items-center justify-center text-white">
+                <i className="fas fa-play text-primary text-4xl mb-4 animate-bounce"></i>
+                <h1 className="text-2xl font-bold tracking-tight">TV<span className="text-primary">Tensei</span></h1>
+            </div>
+        );
+    }
+
+    if (!user) {
+        return <AuthScreen />;
+    }
+
+    // ==========================================
+    // MAIN APP RENDER
     // ==========================================
     return (
         <div className="flex flex-col md:flex-row h-screen bg-background font-sans text-textMain">
@@ -539,11 +684,11 @@ const App = () => {
                     <h1 className="text-2xl font-bold tracking-tight">TV<span className="text-primary">Tensei</span></h1>
                 </div>
                 <div className="flex w-full md:flex-col gap-0 md:gap-2">
-                    <NavItem id="home" icon="compass" label="Discover" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                    <NavItem id="search" icon="search" label="Search" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                    <NavItem id="history" icon="list-ul" label="History" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                    <NavItem id="calendar" icon="calendar-days" label="Calendar" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                    <NavItem id="profile" icon="user" label="Profile" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="home" icon="compass" label="Esplora" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="search" icon="search" label="Cerca" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="history" icon="list-ul" label="Storico" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="calendar" icon="calendar-days" label="Calendario" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="profile" icon="user" label="Profilo" activeTab={activeTab} setActiveTab={setActiveTab}/>
                 </div>
             </nav>
 
@@ -559,8 +704,8 @@ const App = () => {
                     
                     {activeTab === 'calendar' && (
                         <div className="p-4 md:p-8 animate-fade-in pb-24">
-                            <h2 className="text-3xl font-bold mb-2">Calendar</h2>
-                            <p className="text-textMuted mb-8">Upcoming episodes for your favorite shows.</p>
+                            <h2 className="text-3xl font-bold mb-2">Calendario</h2>
+                            <p className="text-textMuted mb-8">I prossimi episodi delle tue serie preferite.</p>
                             {isLoadingCalendar ? <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div> : upcomingEpisodes.length > 0 ? (
                                 <div className="space-y-4">
                                     {upcomingEpisodes.map(item => (
@@ -569,7 +714,7 @@ const App = () => {
                                             <div className="flex-1 min-w-0">
                                                 <div className="text-xs text-primary font-bold mb-1 truncate">{item.showName}</div>
                                                 <div className="text-sm md:text-lg font-bold text-white mb-1 truncate">{item.episode.name}</div>
-                                                <div className="text-xs md:text-sm text-textMuted">Season {item.episode.season_number} • Episode {item.episode.episode_number}</div>
+                                                <div className="text-xs md:text-sm text-textMuted">Stagione {item.episode.season_number} • Episodio {item.episode.episode_number}</div>
                                             </div>
                                             <div className="text-right">
                                                 <div className="text-white font-bold text-xs md:text-sm bg-primary px-3 py-1 rounded-full shadow-[0_0_10px_rgba(229,9,20,0.5)] whitespace-nowrap">{item.episode.air_date ? item.episode.air_date.split('-').reverse().join('/') : 'TBA'}</div>
@@ -577,44 +722,44 @@ const App = () => {
                                         </div>
                                     ))}
                                 </div>
-                            ) : <div className="text-center p-8 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted"><i className="fas fa-calendar-times text-4xl mb-3 opacity-50"></i><p>No upcoming episodes found for your favorite shows.</p></div>}
+                            ) : <div className="text-center p-8 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted"><i className="fas fa-calendar-times text-4xl mb-3 opacity-50"></i><p>Nessun nuovo episodio in programma.</p></div>}
                         </div>
                     )}
 
                     {activeTab === 'history' && (
                         <div className="p-4 md:p-8 animate-fade-in pb-24">
-                            <h2 className="text-3xl font-bold mb-2">History</h2>
-                            <p className="text-textMuted mb-8">Your library divided by watch status.</p>
+                            <h2 className="text-3xl font-bold mb-2">Storico</h2>
+                            <p className="text-textMuted mb-8">La tua libreria divisa per stato di visione.</p>
                             <div>
-                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2"><i className="fas fa-play-circle text-primary"></i> In Progress <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full">{historyData.inProgress.length}</span></h3>
-                                <div className="flex flex-col gap-3 mb-10">{historyData.inProgress.length > 0 ? historyData.inProgress.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="inProgress" />) : <p className="text-textMuted text-sm mb-6">No shows currently in progress.</p>}</div>
+                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2"><i className="fas fa-play-circle text-primary"></i> In Corso <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full">{historyData.inProgress.length}</span></h3>
+                                <div className="flex flex-col gap-3 mb-10">{historyData.inProgress.length > 0 ? historyData.inProgress.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="inProgress" />) : <p className="text-textMuted text-sm mb-6">Nessuna serie in corso.</p>}</div>
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2"><i className="fas fa-check-circle text-green-500"></i> Completed <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full">{historyData.completed.length}</span></h3>
-                                <div className="flex flex-col gap-3 mb-10">{historyData.completed.length > 0 ? historyData.completed.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="completed" />) : <p className="text-textMuted text-sm mb-6">You haven't completed any shows yet.</p>}</div>
+                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2"><i className="fas fa-check-circle text-green-500"></i> Completate <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full">{historyData.completed.length}</span></h3>
+                                <div className="flex flex-col gap-3 mb-10">{historyData.completed.length > 0 ? historyData.completed.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="completed" />) : <p className="text-textMuted text-sm mb-6">Non hai completato nessuna serie.</p>}</div>
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2"><i className="fas fa-bookmark text-blue-400"></i> To Start <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full">{historyData.toStart.length}</span></h3>
-                                <div className="flex flex-col gap-3 mb-10">{historyData.toStart.length > 0 ? historyData.toStart.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="toStart" />) : <p className="text-textMuted text-sm mb-6">No saved shows waiting to be started.</p>}</div>
+                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2"><i className="fas fa-bookmark text-blue-400"></i> Da Iniziare <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full">{historyData.toStart.length}</span></h3>
+                                <div className="flex flex-col gap-3 mb-10">{historyData.toStart.length > 0 ? historyData.toStart.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="toStart" />) : <p className="text-textMuted text-sm mb-6">Nessuna serie salvata "da iniziare".</p>}</div>
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'profile' && (
                         <div className="p-4 md:p-8 animate-fade-in pb-24">
-                            <h2 className="text-3xl font-bold mb-2">Profile</h2>
-                            <p className="text-textMuted mb-8">Your Otaku statistics and settings.</p>
+                            <h2 className="text-3xl font-bold mb-2">Profilo</h2>
+                            <p className="text-textMuted mb-8">Le tue statistiche da Otaku.</p>
                             
-                            {isCalculatingStats ? <div className="flex flex-col items-center justify-center p-8 border border-surfaceLight rounded-xl mb-8"><i className="fas fa-satellite-dish fa-spin text-primary text-3xl mb-3"></i><p className="text-textMuted text-sm">Calculating watch time...</p></div> : (
+                            {isCalculatingStats ? <div className="flex flex-col items-center justify-center p-8 border border-surfaceLight rounded-xl mb-8"><i className="fas fa-satellite-dish fa-spin text-primary text-3xl mb-3"></i><p className="text-textMuted text-sm">Calcolando il tempo perso...</p></div> : (
                                 <div className="mb-8 bg-surfaceLight/10 border border-surfaceLight rounded-xl p-6">
                                     <div className="grid grid-cols-3 gap-4 text-center">
-                                        <div><div className="text-3xl md:text-5xl font-extrabold text-primary mb-1 drop-shadow-[0_0_10px_rgba(229,9,20,0.4)]">{stats.months}</div><div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Months</div></div>
-                                        <div><div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.days}</div><div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Days</div></div>
-                                        <div><div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.hours}</div><div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Hours</div></div>
+                                        <div><div className="text-3xl md:text-5xl font-extrabold text-primary mb-1 drop-shadow-[0_0_10px_rgba(229,9,20,0.4)]">{stats.months}</div><div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Mesi</div></div>
+                                        <div><div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.days}</div><div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Giorni</div></div>
+                                        <div><div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.hours}</div><div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Ore</div></div>
                                     </div>
                                     {stats.topShows.length > 0 && (
                                         <div className="mt-8 pt-6 border-t border-surfaceLight/50">
-                                            <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-trophy text-yellow-500 mr-2"></i> Most Watched Shows</h4>
+                                            <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-trophy text-yellow-500 mr-2"></i> Le Serie Più Viste</h4>
                                             <div className="space-y-4">
                                                 {stats.topShows.map((show, i) => (
                                                     <div key={i} className="group">
@@ -629,23 +774,30 @@ const App = () => {
                             )}
 
                             <div className="mt-8 mb-10">
-                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-cog mr-2 text-primary"></i> Settings</h4>
+                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-cog mr-2 text-primary"></i> Impostazioni</h4>
                                 <div className="bg-surfaceLight/10 border border-surfaceLight rounded-xl p-4 flex justify-between items-center hover:bg-surfaceLight/20 transition-colors">
-                                    <div><h4 className="text-white font-bold text-sm md:text-base">Default Modal View</h4><p className="text-xs text-textMuted mt-1">Open shows in fullscreen mode by default</p></div>
+                                    <div><h4 className="text-white font-bold text-sm md:text-base">Schermo Intero</h4><p className="text-xs text-textMuted mt-1">Apri le serie in fullscreen di default</p></div>
                                     <button onClick={toggleDefaultFS} className={`w-12 h-6 md:w-14 md:h-7 rounded-full relative transition-colors shadow-inner ${modalDefaultFS ? 'bg-primary' : 'bg-surfaceLight'}`}><div className={`absolute top-1 left-1 w-4 h-4 md:w-5 md:h-5 rounded-full bg-white transition-transform ${modalDefaultFS ? 'translate-x-6 md:translate-x-7' : 'translate-x-0'}`}></div></button>
                                 </div>
                             </div>
 
                             <div className="mt-8 mb-10">
-                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-file-import mr-2 text-primary"></i> Import from TV Time</h4>
+                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-file-import mr-2 text-primary"></i> Importa da TV Time</h4>
                                 <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors relative bg-surfaceLight/10 ${isImporting ? 'border-primary opacity-80' : 'border-surfaceLight hover:border-primary cursor-pointer group'}`}>
                                     <input type="file" accept=".zip" onChange={handleZipImport} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isImporting} />
                                     {isImporting ? (
                                         <div className="flex flex-col items-center justify-center"><i className="fas fa-spinner fa-spin text-3xl mb-3 text-primary"></i><p className="text-white font-medium mt-2">{importStatus}</p></div>
                                     ) : (
-                                        <div className="flex flex-col items-center justify-center pointer-events-none"><i className="fas fa-file-archive text-4xl mb-3 text-textMuted group-hover:text-primary transition-colors"></i><h3 className="font-bold text-lg text-white mb-1">Upload .zip archive</h3><p className="text-textMuted text-sm">Drag or click to upload your exported data</p></div>
+                                        <div className="flex flex-col items-center justify-center pointer-events-none"><i className="fas fa-file-archive text-4xl mb-3 text-textMuted group-hover:text-primary transition-colors"></i><h3 className="font-bold text-lg text-white mb-1">Carica archivio .zip</h3><p className="text-textMuted text-sm">Trascina qui il file esportato da TV Time</p></div>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* LOGOUT BUTTON */}
+                            <div className="mt-12 mb-10 border-t border-surfaceLight pt-8">
+                                <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-transparent border border-red-600/50 text-red-500 hover:bg-red-600 hover:text-white font-bold py-3 px-4 rounded-xl transition-all">
+                                    <i className="fas fa-sign-out-alt"></i> Disconnetti Account
+                                </button>
                             </div>
                         </div>
                     )}
@@ -684,13 +836,13 @@ const App = () => {
 
                         <div className="flex-1 overflow-y-auto p-6 md:p-8">
                             <div className="mb-8">
-                                <h3 className="text-lg font-bold text-white mb-3">Synopsis</h3>
-                                <p className="text-gray-300 leading-relaxed text-sm md:text-base">{showDetails?.overview || selectedShow.overview || "No synopsis available for this show."}</p>
+                                <h3 className="text-lg font-bold text-white mb-3">Sinossi</h3>
+                                <p className="text-gray-300 leading-relaxed text-sm md:text-base">{showDetails?.overview || selectedShow.overview || "Nessuna sinossi disponibile per questa serie."}</p>
                             </div>
 
                             {isShowSaved(selectedShow.id) && (
                                 <div className="mb-8 bg-surfaceLight/20 p-4 rounded-xl border border-surfaceLight flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in">
-                                    <div className="flex items-center gap-2 text-white font-bold"><i className="fas fa-star text-yellow-500"></i> Your Rating</div>
+                                    <div className="flex items-center gap-2 text-white font-bold"><i className="fas fa-star text-yellow-500"></i> Il Tuo Voto</div>
                                     <div className="flex gap-2">
                                         {[1, 2, 3, 4, 5].map(star => {
                                             const currentRating = savedShowsData.find(s => s.id === selectedShow.id)?.rating || 0;
@@ -700,7 +852,7 @@ const App = () => {
                                 </div>
                             )}
 
-                            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><i className="fas fa-layer-group text-primary"></i> Seasons & Episodes</h3>
+                            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><i className="fas fa-layer-group text-primary"></i> Stagioni ed Episodi</h3>
                             
                             {isLoadingDetails ? <div className="flex justify-center p-8"><i className="fas fa-spinner fa-spin text-primary text-3xl"></i></div> : showDetails && showDetails.seasons ? (
                                 <div className="space-y-3 pb-8">
@@ -715,7 +867,7 @@ const App = () => {
                                                         {season.poster_path ? <img src={`${TMDB_IMG_URL}${season.poster_path}`} className="w-12 h-16 object-cover rounded shadow-md" alt={season.name} /> : <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center"><i className="fas fa-tv text-4xl text-surfaceLight mb-3"></i></div>}
                                                         <div className="text-left">
                                                             <div className="font-bold text-white text-lg">{season.name}</div>
-                                                            <div className="text-sm text-textMuted">{watchedInSeason.length} / {season.episode_count} Episodes {season.air_date ? `• ${season.air_date.substring(0,4)}` : ''}</div>
+                                                            <div className="text-sm text-textMuted">{watchedInSeason.length} / {season.episode_count} Episodi {season.air_date ? `• ${season.air_date.substring(0,4)}` : ''}</div>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -747,18 +899,16 @@ const App = () => {
                                                             </div>
                                                         )}
                                                     </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                                );
+                                            })}
+                                        </div>
+                                    ) : <p className="text-textMuted">No additional details found.</p>}
                                 </div>
-                            ) : <p className="text-textMuted">No additional details found.</p>}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
-            )}
-        </div>
-    );
-};
+            );
+        };
 
-export default App;
+        export default App;

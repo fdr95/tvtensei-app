@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import Papa from 'papaparse';
 
-// --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
 import { 
     getAuth, 
@@ -19,7 +18,6 @@ import {
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, writeBatch } from "firebase/firestore";
 
-// --- ENVIRONMENT VARIABLES ---
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMG_URL = 'https://image.tmdb.org/t/p/w500';
@@ -43,9 +41,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
-// ==========================================
-// ERROR BOUNDARY (ANTI-CRASH SYSTEM)
-// ==========================================
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
@@ -68,7 +63,7 @@ class ErrorBoundary extends React.Component {
                     <i className="fas fa-bug text-primary text-6xl mb-6 animate-bounce"></i>
                     <h1 className="text-3xl font-bold mb-4">Oops! The App Crashed.</h1>
                     <p className="text-textMuted mb-6 max-w-lg">
-                        We caught an unexpected error. This usually happens with new accounts missing some data.
+                        We caught an unexpected error. Check the console for more details.
                     </p>
                     <div className="bg-surfaceLight p-4 rounded-xl w-full max-w-3xl overflow-auto text-left text-sm font-mono text-red-400">
                         <strong>{this.state.error && this.state.error.toString()}</strong>
@@ -85,9 +80,6 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-// ==========================================
-// AUTHENTICATION SCREEN
-// ==========================================
 const AuthScreen = () => {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
@@ -253,10 +245,6 @@ const AuthScreen = () => {
     );
 };
 
-// ==========================================
-// UI COMPONENTS
-// ==========================================
-
 const NavItem = ({ id, icon, label, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;
     return (
@@ -273,7 +261,7 @@ const NavItem = ({ id, icon, label, activeTab, setActiveTab }) => {
 };
 
 const ShowCard = ({ show, openShowModal, isSaved, additionalUI }) => (
-    <div onClick={() => openShowModal(show)} className="cursor-pointer group relative aspect-[2/3] bg-surfaceLight/30 rounded-xl border border-surfaceLight overflow-hidden transition-transform duration-300 hover:scale-105 hover:border-primary/50">
+    <div onClick={() => openShowModal(show)} className="cursor-pointer group relative aspect-[2/3] bg-surfaceLight/30 rounded-xl border border-surfaceLight overflow-hidden transition-transform duration-300 hover:scale-105 hover:border-primary/50 shadow-md">
         {show.poster_path ? (
             <img src={`${TMDB_IMG_URL}${show.poster_path}`} alt={show.name} className="w-full h-full object-cover" loading="lazy" />
         ) : (
@@ -282,8 +270,10 @@ const ShowCard = ({ show, openShowModal, isSaved, additionalUI }) => (
                 <span className="text-xs font-bold text-textMuted line-clamp-3">{show.name}</span>
             </div>
         )}
-        {isSaved && <div className="absolute top-2 right-2 bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-black/50 z-10"><i className="fas fa-heart text-sm"></i></div>}
+        {isSaved && <div className="absolute top-2 right-2 bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-black/50 z-10"><i className="fas fa-bookmark text-sm"></i></div>}
+        
         {additionalUI}
+        
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
             <span className="text-white font-bold text-sm line-clamp-2">{show.name}</span>
             {show.first_air_date && <span className="text-primary text-xs font-medium">{show.first_air_date.substring(0,4)}</span>}
@@ -293,7 +283,7 @@ const ShowCard = ({ show, openShowModal, isSaved, additionalUI }) => (
 
 const ShowListRow = ({ show, openShowModal, status }) => (
     <div onClick={() => openShowModal(show)} className="flex items-center gap-4 bg-surfaceLight/10 hover:bg-surfaceLight/30 border border-surfaceLight/50 rounded-xl p-3 cursor-pointer transition-all group">
-        <div className="w-12 h-16 md:w-16 md:h-24 flex-shrink-0 bg-surface rounded-md overflow-hidden shadow-md">
+        <div className="w-12 h-16 md:w-16 md:h-24 flex-shrink-0 bg-surface rounded-md overflow-hidden shadow-md relative">
             {show.poster_path ? (
                 <img src={`${TMDB_IMG_URL}${show.poster_path}`} alt={show.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
             ) : (
@@ -303,23 +293,29 @@ const ShowListRow = ({ show, openShowModal, status }) => (
         <div className="flex-1 min-w-0">
             <h4 className="text-white font-bold text-sm md:text-lg truncate">{show.name}</h4>
             <div className="mt-1 md:mt-2">
-                {status === 'completed' && <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Completed</span>}
-                {status === 'toStart' && <span className="text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded">Not Started</span>}
-                {status === 'inProgress' && (
-                    <div className="flex flex-col gap-1 w-full max-w-xs">
+                <div className="flex items-center gap-2 mb-1">
+                    {status === 'completed' && <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Completed</span>}
+                    {status === 'upToDate' && <span className="text-xs font-bold text-purple-400 bg-purple-400/10 px-2 py-1 rounded">Up to Date</span>}
+                    {status === 'toStart' && <span className="text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded">Watchlist</span>}
+                </div>
+                {(status === 'inProgress' || status === 'upToDate') && (
+                    <div className="flex flex-col gap-1 w-full max-w-xs mt-1">
                         <div className="flex justify-between text-xs text-textMuted">
                             <span>Progress</span>
                             <span>{show.watched_count} / {show.total_episodes || "?"}</span>
                         </div>
                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden">
                             <div 
-                                className="h-full bg-primary transition-all" 
+                                className={`h-full transition-all ${status === 'upToDate' ? 'bg-purple-500' : 'bg-primary'}`} 
                                 style={{ width: `${show.total_episodes ? Math.min(100, (show.watched_count / show.total_episodes) * 100) : 10}%` }}
                             ></div>
                         </div>
                     </div>
                 )}
             </div>
+        </div>
+        <div className="px-4 text-textMuted font-bold hidden md:block">
+            {show.rating > 0 ? <span className="text-yellow-500"><i className="fas fa-star text-xs"></i> {show.rating}</span> : <span className="text-surfaceLight">-</span>}
         </div>
         <div className="px-2 text-textMuted group-hover:text-white transition-colors"><i className="fas fa-chevron-right"></i></div>
     </div>
@@ -340,23 +336,16 @@ const DiscoverTab = ({ savedShowsData, openShowModal, isShowSaved }) => {
                 } else {
                     const seedShows = [...savedShowsData].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 3);
                     let recs = [];
-                    
                     for (let show of seedShows) {
                         const res = await fetch(`${TMDB_BASE_URL}/tv/${show.id}/recommendations?api_key=${TMDB_API_KEY}`);
                         const data = await res.json();
                         recs = [...recs, ...(data.results || [])];
                     }
-
                     const uniqueRecs = [];
                     const seenIds = new Set(savedShowsData.map(s => s.id));
-                    
                     for (let r of recs) {
-                        if (!seenIds.has(r.id)) {
-                            uniqueRecs.push(r);
-                            seenIds.add(r.id);
-                        }
+                        if (!seenIds.has(r.id)) { uniqueRecs.push(r); seenIds.add(r.id); }
                     }
-                    
                     uniqueRecs.sort(() => 0.5 - Math.random());
                     setRecommendations(uniqueRecs.slice(0, 12));
                 }
@@ -372,8 +361,7 @@ const DiscoverTab = ({ savedShowsData, openShowModal, isShowSaved }) => {
     return (
         <div className="p-4 md:p-8 animate-fade-in pb-24">
             <h2 className="text-3xl font-bold mb-2">Discover</h2>
-            <p className="text-textMuted mb-8">{savedShowsData && savedShowsData.length > 0 ? "Recommended for you based on your favorites." : "Trending shows worldwide this week."}</p>
-            
+            <p className="text-textMuted mb-8">{savedShowsData && savedShowsData.length > 0 ? "Recommended for you based on your library." : "Trending shows worldwide this week."}</p>
             {isLoading ? (
                 <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div>
             ) : recommendations.length > 0 ? (
@@ -391,7 +379,6 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
     <div className="p-4 md:p-8 animate-fade-in flex flex-col h-full min-h-[80vh] pb-24">
         <h2 className="text-3xl font-bold mb-2">Search TMDB</h2>
         <p className="text-textMuted mb-6">Find your next binge.</p>
-        
         <div className="relative mb-6">
             <input 
                 type="text" 
@@ -403,13 +390,11 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
             <i className="fas fa-search absolute left-6 top-1/2 -translate-y-1/2 text-textMuted text-lg"></i>
             {isSearching && <i className="fas fa-spinner fa-spin absolute right-6 top-1/2 -translate-y-1/2 text-primary text-lg"></i>}
         </div>
-
         {searchError && (
             <div className="bg-primary/20 border border-primary text-white p-4 rounded-xl flex items-center gap-3 mb-6">
                 <i className="fas fa-exclamation-triangle text-primary"></i><p>{searchError}</p>
             </div>
         )}
-
         {searchResults.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
                 {searchResults.map(show => <ShowCard key={show.id} show={show} openShowModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
@@ -423,20 +408,14 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
     </div>
 );
 
-// ==========================================
-// MAIN APP COMPONENT
-// ==========================================
 const App = () => {
-    // Auth State
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     
-    // UI States
     const [activeTab, setActiveTab] = useState('home');
     const [modalDefaultFS, setModalDefaultFS] = useState(() => localStorage.getItem('tvtensei_fs_modal') === 'true');
     const [isFullscreen, setIsFullscreen] = useState(modalDefaultFS);
 
-    // Data States
     const [savedShowsData, setSavedShowsData] = useState([]);
     const [watchedEpisodesData, setWatchedEpisodesData] = useState([]);
 
@@ -459,9 +438,14 @@ const App = () => {
     
     const [isImporting, setIsImporting] = useState(false);
     const [importStatus, setImportStatus] = useState("");
-    const [historyData, setHistoryData] = useState({ completed: [], inProgress: [], toStart: [] });
+    
+    // Advanced History States
+    const [historyShows, setHistoryShows] = useState([]);
+    const [historyViewMode, setHistoryViewMode] = useState('list'); 
+    const [historySortBy, setHistorySortBy] = useState('recent'); 
+    const [historySortDirection, setHistorySortDirection] = useState('desc');
+    const [historyFilterStatus, setHistoryFilterStatus] = useState('inProgress'); 
 
-    // --- FIREBASE AUTH INIT ---
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
             setUser(currentUser);
@@ -472,7 +456,6 @@ const App = () => {
 
     const currentUid = user ? user.uid : null;
 
-    // --- LOGOUT HANDLER ---
     const handleLogout = async () => {
         try {
             await signOut(auth);
@@ -483,39 +466,51 @@ const App = () => {
         }
     };
 
-    // --- DATA SYNC ---
     useEffect(() => {
         if (!currentUid) {
             setSavedShowsData([]);
             setWatchedEpisodesData([]);
             return;
         }
-        
         const unsubShows = onSnapshot(collection(db, 'users', currentUid, 'shows'), (snapshot) => {
             const newShows = [];
             snapshot.forEach(d => newShows.push({ id: Number(d.id), ...d.data() }));
             setSavedShowsData(newShows);
         });
-
         const unsubEps = onSnapshot(collection(db, 'users', currentUid, 'watched_episodes'), (snapshot) => {
             const newEps = [];
             snapshot.forEach(d => newEps.push({ id: d.id, ...d.data() }));
             setWatchedEpisodesData(newEps);
         });
-
         return () => { unsubShows(); unsubEps(); };
     }, [currentUid]);
 
-    // --- DATA LOGIC ---
     const isShowSaved = (showId) => savedShowsData.some(s => s.id === showId);
     const getWatchedEpisodeData = (showId, seasonNum, epNum) => watchedEpisodesData.find(w => w.show_id === showId && w.season_number === seasonNum && w.episode_number === epNum);
 
-    const toggleFavoriteShow = async (show) => {
+    const toggleLibraryShow = async (show) => {
         if(!currentUid) return;
         const docRef = doc(db, 'users', currentUid, 'shows', show.id.toString());
         try {
-            if (isShowSaved(show.id)) await deleteDoc(docRef);
-            else await setDoc(docRef, { name: show.name, poster_path: show.poster_path || null, added_at: new Date().toISOString(), rating: 0, total_episodes: show.number_of_episodes || null });
+            if (isShowSaved(show.id)) {
+                const batch = writeBatch(db);
+                batch.delete(docRef);
+                const showEpisodes = watchedEpisodesData.filter(ep => ep.show_id === show.id);
+                showEpisodes.forEach(ep => {
+                    batch.delete(doc(db, 'users', currentUid, 'watched_episodes', ep.id));
+                });
+                await batch.commit();
+            } else {
+                await setDoc(docRef, { 
+                    name: show.name, 
+                    poster_path: show.poster_path || null, 
+                    added_at: new Date().toISOString(), 
+                    rating: 0, 
+                    total_episodes: showDetails?.number_of_episodes || show.number_of_episodes || null,
+                    show_status: showDetails?.status || null,
+                    first_air_date: showDetails?.first_air_date || show.first_air_date || null
+                });
+            }
         } catch (e) { console.error(e) }
     };
 
@@ -528,9 +523,26 @@ const App = () => {
         if(!currentUid) return;
         const existing = getWatchedEpisodeData(showId, ep.season_number, ep.episode_number);
         try {
-            if (existing) await deleteDoc(doc(db, 'users', currentUid, 'watched_episodes', existing.id));
-            else await setDoc(doc(db, 'users', currentUid, 'watched_episodes', ep.id.toString()), { show_id: showId, season_number: ep.season_number, episode_number: ep.episode_number, runtime: ep.runtime || 0, watched_at: new Date().toISOString() });
-        } catch (e) {}
+            if (existing) {
+                await deleteDoc(doc(db, 'users', currentUid, 'watched_episodes', existing.id));
+            } else {
+                await setDoc(doc(db, 'users', currentUid, 'watched_episodes', ep.id.toString()), { 
+                    show_id: showId, season_number: ep.season_number, episode_number: ep.episode_number, runtime: ep.runtime || 0, watched_at: new Date().toISOString() 
+                });
+                
+                if (!isShowSaved(showId)) {
+                    await setDoc(doc(db, 'users', currentUid, 'shows', showId.toString()), {
+                        name: selectedShow?.name || showDetails?.name || "Unknown",
+                        poster_path: selectedShow?.poster_path || showDetails?.poster_path || null,
+                        added_at: new Date().toISOString(),
+                        rating: 0,
+                        total_episodes: showDetails?.number_of_episodes || selectedShow?.number_of_episodes || null,
+                        show_status: showDetails?.status || null,
+                        first_air_date: showDetails?.first_air_date || selectedShow?.first_air_date || null
+                    });
+                }
+            }
+        } catch (e) { console.error(e) }
     };
 
     const toggleSeasonWatched = async (showId, seasonNumber, episodeCount) => {
@@ -540,7 +552,7 @@ const App = () => {
         
         if (watchedInSeason.length >= episodeCount && episodeCount > 0) {
             watchedInSeason.forEach(w => batch.delete(doc(db, 'users', currentUid, 'watched_episodes', w.id)));
-            try { await batch.commit(); } catch (e) {}
+            try { await batch.commit(); } catch (e) { console.error(e) }
         } else {
             let eps = seasonEpisodes[seasonNumber];
             if (!eps) {
@@ -558,11 +570,25 @@ const App = () => {
                     batchCount++;
                 }
             });
-            if (batchCount > 0) try { await batch.commit(); } catch (e) {}
+            if (batchCount > 0) {
+                try { 
+                    await batch.commit(); 
+                    if (!isShowSaved(showId)) {
+                        await setDoc(doc(db, 'users', currentUid, 'shows', showId.toString()), {
+                            name: selectedShow?.name || showDetails?.name || "Unknown",
+                            poster_path: selectedShow?.poster_path || showDetails?.poster_path || null,
+                            added_at: new Date().toISOString(),
+                            rating: 0,
+                            total_episodes: showDetails?.number_of_episodes || selectedShow?.number_of_episodes || null,
+                            show_status: showDetails?.status || null,
+                            first_air_date: showDetails?.first_air_date || selectedShow?.first_air_date || null
+                        });
+                    }
+                } catch (e) { console.error(e) }
+            }
         }
     };
 
-    // --- IMPORT LOGIC ---
     const handleZipImport = async (event) => {
         const file = event.target.files[0];
         if (!file || !currentUid) return;
@@ -652,13 +678,22 @@ const App = () => {
                 let foundShow = showIdMap.get(showName);
                 if (foundShow) {
                     let totalEps = null;
+                    let showStatus = null;
                     try {
                         let resDetail = await fetch(`${TMDB_BASE_URL}/tv/${foundShow.id}?api_key=${TMDB_API_KEY}&language=en-US`);
                         let dataDetail = await resDetail.json();
                         totalEps = dataDetail.number_of_episodes;
+                        showStatus = dataDetail.status;
                     } catch(e){}
 
-                    batch.set(doc(db, 'users', currentUid, 'shows', foundShow.id.toString()), { name: foundShow.name, poster_path: foundShow.poster_path || null, added_at: new Date().toISOString(), rating: 0, total_episodes: totalEps || null }, { merge: true });
+                    batch.set(doc(db, 'users', currentUid, 'shows', foundShow.id.toString()), { 
+                        name: foundShow.name, 
+                        poster_path: foundShow.poster_path || null, 
+                        added_at: new Date().toISOString(), 
+                        rating: 0, 
+                        total_episodes: totalEps || null,
+                        show_status: showStatus || null
+                    }, { merge: true });
                     batchCount++; totalShowsImported++;
                     if (batchCount >= 400) { await batch.commit(); batch = writeBatch(db); batchCount = 0; }
                 }
@@ -685,49 +720,65 @@ const App = () => {
         }
     };
 
-    // --- TMDB SEARCH & HISTORY ---
-    useEffect(() => {
-        const delayDebounceFn = setTimeout(() => {
-            if (searchQuery.trim().length >= 2) {
-                setIsSearching(true); setSearchError('');
-                fetch(`${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchQuery.trim())}&language=en-US`)
-                    .then(r => r.json()).then(data => { setSearchResults(data.results || []); if (data.results.length === 0) setSearchError("No shows found with this name."); })
-                    .catch(err => { setSearchError(err.message); setSearchResults([]); })
-                    .finally(() => setIsSearching(false));
-            } else if (searchQuery.trim().length === 0) { setSearchResults([]); setSearchError(''); }
-        }, 600);
-        return () => clearTimeout(delayDebounceFn);
-    }, [searchQuery]);
-
     useEffect(() => {
         const processHistory = async () => {
-            if (!savedShowsData || !watchedEpisodesData) return;
-            
-            const toStart = [], inProgress = [], completed = [];
+            const flatShows = [];
             const showCounts = {};
-            watchedEpisodesData.forEach(ep => showCounts[ep.show_id] = (showCounts[ep.show_id] || 0) + 1);
+            const showLastWatched = {};
+
+            watchedEpisodesData.forEach(ep => {
+                showCounts[ep.show_id] = (showCounts[ep.show_id] || 0) + 1;
+                if (!showLastWatched[ep.show_id] || new Date(ep.watched_at) > new Date(showLastWatched[ep.show_id])) {
+                    showLastWatched[ep.show_id] = ep.watched_at;
+                }
+            });
 
             for (let show of savedShowsData) {
                 const count = showCounts[show.id] || 0;
                 const s = { ...show, watched_count: count };
 
+                s.last_watched_at = showLastWatched[show.id] || show.added_at || 0;
+                s.year = s.first_air_date ? parseInt(s.first_air_date.substring(0, 4)) : 0;
+
                 if (count === 0) {
-                    toStart.push(s);
+                    s.status = 'toStart';
                 } else {
                     let totalEps = s.total_episodes;
-                    if (!totalEps) {
+                    let showStatus = s.show_status;
+                    
+                    if (!totalEps || !showStatus) {
                         try {
                             const res = await fetch(`${TMDB_BASE_URL}/tv/${s.id}?api_key=${TMDB_API_KEY}&language=en-US`);
-                            totalEps = (await res.json()).number_of_episodes;
-                            if (currentUid) await setDoc(doc(db, 'users', currentUid, 'shows', s.id.toString()), { total_episodes: totalEps || null }, { merge: true });
-                        } catch(e) { totalEps = 9999; }
+                            const data = await res.json();
+                            totalEps = data.number_of_episodes;
+                            showStatus = data.status;
+                            if (currentUid) {
+                                await setDoc(doc(db, 'users', currentUid, 'shows', s.id.toString()), { 
+                                    total_episodes: totalEps || null, 
+                                    show_status: showStatus || null 
+                                }, { merge: true });
+                            }
+                        } catch(e) { 
+                            totalEps = s.total_episodes || 9999; 
+                            showStatus = s.show_status || 'Returning Series'; 
+                        }
                     }
                     s.total_episodes = totalEps;
-                    if (totalEps && count >= totalEps) completed.push(s); else inProgress.push(s);
+                    s.show_status = showStatus;
+                    
+                    const isEnded = ['Ended', 'Canceled'].includes(showStatus);
+                    
+                    if (totalEps && count >= totalEps) {
+                        s.status = isEnded ? 'completed' : 'upToDate';
+                    } else {
+                        s.status = 'inProgress';
+                    }
                 }
+                
+                s.progressPercentage = s.total_episodes ? Math.min(100, (s.watched_count / s.total_episodes) * 100) : 0;
+                flatShows.push(s);
             }
-            const sortByName = (a, b) => (a.name || '').localeCompare(b.name || '');
-            setHistoryData({ completed: completed.sort(sortByName), inProgress: inProgress.sort(sortByName), toStart: toStart.sort(sortByName) });
+            setHistoryShows(flatShows);
         };
         processHistory();
     }, [savedShowsData, watchedEpisodesData, currentUid]);
@@ -782,14 +833,36 @@ const App = () => {
         const timeoutId = setTimeout(calculateStats, 1000); return () => clearTimeout(timeoutId);
     }, [watchedEpisodesData, savedShowsData]);
 
-    // --- MODAL CONTROLS ---
+    const filteredAndSortedHistory = [...historyShows]
+        .filter(show => historyFilterStatus === 'all' || show.status === historyFilterStatus)
+        .sort((a, b) => {
+            let res = 0;
+            switch(historySortBy) {
+                case 'recent': res = new Date(b.last_watched_at || 0) - new Date(a.last_watched_at || 0); break;
+                case 'added_at': res = new Date(b.added_at || 0) - new Date(a.added_at || 0); break;
+                case 'rating': res = (b.rating || 0) - (a.rating || 0); break;
+                case 'progress': res = (b.progressPercentage || 0) - (a.progressPercentage || 0); break;
+                case 'year': res = (b.year || 0) - (a.year || 0); break;
+                case 'status': 
+                    const order = { 'inProgress': 1, 'upToDate': 2, 'toStart': 3, 'completed': 4 };
+                    res = order[a.status] - order[b.status]; break;
+                case 'name': res = (b.name || "").localeCompare(a.name || ""); break;
+            }
+            return historySortDirection === 'desc' ? res : -res;
+        });
+
     const openShowModal = async (show) => {
         setIsFullscreen(modalDefaultFS); setSelectedShow(show); setShowDetails(null); setExpandedSeason(null); setSeasonEpisodes({}); setIsLoadingDetails(true);
         try {
             const res = await fetch(`${TMDB_BASE_URL}/tv/${show.id}?api_key=${TMDB_API_KEY}&language=en-US`);
             const data = await res.json();
             setShowDetails(data);
-            if (currentUid && isShowSaved(show.id)) await setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { total_episodes: data.number_of_episodes || null }, { merge: true });
+            if (currentUid && isShowSaved(show.id)) {
+                await setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { 
+                    total_episodes: data.number_of_episodes || null,
+                    show_status: data.status || null
+                }, { merge: true });
+            }
         } catch (err) {} finally { setIsLoadingDetails(false); }
     };
     
@@ -811,9 +884,6 @@ const App = () => {
     const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
     const toggleDefaultFS = () => { const newVal = !modalDefaultFS; setModalDefaultFS(newVal); localStorage.setItem('tvtensei_fs_modal', newVal); };
 
-    // ==========================================
-    // RENDER: LOADING OR AUTH OR APP
-    // ==========================================
     if (!isAuthReady) {
         return (
             <div className="h-screen w-screen bg-background flex flex-col items-center justify-center text-white">
@@ -827,9 +897,6 @@ const App = () => {
         return <AuthScreen />;
     }
 
-    // ==========================================
-    // MAIN APP RENDER
-    // ==========================================
     return (
         <ErrorBoundary>
             <div className="flex flex-col md:flex-row h-screen bg-background font-sans text-textMain">
@@ -843,7 +910,7 @@ const App = () => {
                     <div className="flex w-full md:flex-col gap-0 md:gap-2">
                         <NavItem id="home" icon="compass" label="Discover" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="search" icon="search" label="Search" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                        <NavItem id="history" icon="list-ul" label="History" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                        <NavItem id="history" icon="list-ul" label="Library" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="calendar" icon="calendar-days" label="Calendar" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="profile" icon="user" label="Profile" activeTab={activeTab} setActiveTab={setActiveTab}/>
                     </div>
@@ -864,8 +931,7 @@ const App = () => {
                         {activeTab === 'calendar' && (
                             <div className="p-4 md:p-8 animate-fade-in pb-24">
                                 <h2 className="text-3xl font-bold mb-2">Calendar</h2>
-                                <p className="text-textMuted mb-8">Upcoming episodes for your favorite shows.</p>
-                                
+                                <p className="text-textMuted mb-8">Upcoming episodes for shows in your library.</p>
                                 {isLoadingCalendar ? (
                                     <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div>
                                 ) : upcomingEpisodes.length > 0 ? (
@@ -899,58 +965,113 @@ const App = () => {
                                 ) : (
                                     <div className="text-center p-8 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted">
                                         <i className="fas fa-calendar-times text-4xl mb-3 opacity-50"></i>
-                                        <p>No upcoming episodes found.</p>
+                                        <p>No upcoming episodes found for your shows.</p>
                                     </div>
                                 )}
                             </div>
                         )}
 
+                        {}
                         {activeTab === 'history' && (
                             <div className="p-4 md:p-8 animate-fade-in pb-24">
-                                <h2 className="text-3xl font-bold mb-2">History</h2>
-                                <p className="text-textMuted mb-8">Your library divided by watch status.</p>
-                                
+                            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                                 <div>
-                                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2">
-                                        <i className="fas fa-play-circle text-primary"></i> In Progress 
-                                        <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full ml-2">{historyData.inProgress.length}</span>
-                                    </h3>
-                                    <div className="flex flex-col gap-3 mb-10">
-                                        {historyData.inProgress.length > 0 ? (
-                                            historyData.inProgress.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="inProgress" />)
-                                        ) : (
-                                            <p className="text-textMuted text-sm mb-6">No shows currently in progress.</p>
-                                        )}
-                                    </div>
+                                    <h2 className="text-3xl font-bold mb-2">Library</h2>
+                                    <p className="text-textMuted">Your full watchlist and watched history.</p>
                                 </div>
                                 
-                                <div>
-                                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2">
-                                        <i className="fas fa-check-circle text-green-500"></i> Completed 
-                                        <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full ml-2">{historyData.completed.length}</span>
-                                    </h3>
-                                    <div className="flex flex-col gap-3 mb-10">
-                                        {historyData.completed.length > 0 ? (
-                                            historyData.completed.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="completed" />)
-                                        ) : (
-                                            <p className="text-textMuted text-sm mb-6">You haven't completed any shows yet.</p>
-                                        )}
+                                <div className="flex flex-wrap items-center gap-3 bg-surfaceLight/10 p-2 rounded-xl border border-surfaceLight">
+                                    <div className="flex items-center gap-2 bg-surface text-white text-sm rounded-lg px-3 py-2 border border-surfaceLight focus-within:border-primary transition-colors">
+                                        <span className="text-textMuted font-medium">Filter:</span>
+                                        <select 
+                                            value={historyFilterStatus} 
+                                            onChange={(e) => setHistoryFilterStatus(e.target.value)}
+                                            className="bg-transparent focus:outline-none cursor-pointer"
+                                        >
+                                            <option value="all" className="bg-surface text-white">All Shows</option>
+                                            <option value="inProgress" className="bg-surface text-white">In Progress</option>
+                                            <option value="upToDate" className="bg-surface text-white">Up to Date</option>
+                                            <option value="completed" className="bg-surface text-white">Completed</option>
+                                            <option value="toStart" className="bg-surface text-white">Watchlist</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center bg-surface rounded-lg border border-surfaceLight focus-within:border-primary transition-colors overflow-hidden">
+                                        <div className="flex items-center gap-2 text-white text-sm px-3 py-2">
+                                            <span className="text-textMuted font-medium">Sort by:</span>
+                                            <select 
+                                                value={historySortBy} 
+                                                onChange={(e) => setHistorySortBy(e.target.value)}
+                                                className="bg-transparent focus:outline-none cursor-pointer"
+                                            >
+                                                <option value="recent" className="bg-surface text-white">Last Watched</option>
+                                                <option value="added_at" className="bg-surface text-white">Date Added</option>
+                                                <option value="name" className="bg-surface text-white">Name</option>
+                                                <option value="rating" className="bg-surface text-white">Rating</option>
+                                                <option value="progress" className="bg-surface text-white">Progress</option>
+                                                <option value="year" className="bg-surface text-white">Year</option>
+                                            </select>
+                                        </div>
+                                        <button 
+                                            onClick={() => setHistorySortDirection(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                            className="px-3 py-2 text-textMuted hover:text-white hover:bg-surfaceLight/50 transition-colors border-l border-surfaceLight"
+                                            title={historySortDirection === 'desc' ? "Descending" : "Ascending"}
+                                        >
+                                            <i className={`fas fa-sort-amount-${historySortDirection === 'desc' ? 'down' : 'up'}`}></i>
+                                        </button>
+                                    </div>
+
+                                    <div className="flex bg-surface rounded-lg border border-surfaceLight overflow-hidden">
+                                        <button 
+                                            onClick={() => setHistoryViewMode('list')} 
+                                            className={`px-3 py-2 transition-colors ${historyViewMode === 'list' ? 'bg-primary text-white' : 'text-textMuted hover:text-white hover:bg-surfaceLight/50'}`}
+                                            title="List View"
+                                        >
+                                            <i className="fas fa-list"></i>
+                                        </button>
+                                        <button 
+                                            onClick={() => setHistoryViewMode('grid')} 
+                                            className={`px-3 py-2 transition-colors ${historyViewMode === 'grid' ? 'bg-primary text-white' : 'text-textMuted hover:text-white hover:bg-surfaceLight/50'}`}
+                                            title="Grid View"
+                                        >
+                                            <i className="fas fa-th-large"></i>
+                                        </button>
                                     </div>
                                 </div>
-                                
-                                <div>
-                                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2 border-b border-surfaceLight pb-2">
-                                        <i className="fas fa-bookmark text-blue-400"></i> To Start 
-                                        <span className="text-sm text-textMuted bg-surfaceLight px-2 py-0.5 rounded-full ml-2">{historyData.toStart.length}</span>
-                                    </h3>
-                                    <div className="flex flex-col gap-3 mb-10">
-                                        {historyData.toStart.length > 0 ? (
-                                            historyData.toStart.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status="toStart" />)
-                                        ) : (
-                                            <p className="text-textMuted text-sm mb-6">No saved shows waiting to be started.</p>
-                                        )}
+                            </div>
+
+                                {filteredAndSortedHistory.length > 0 ? (
+                                    historyViewMode === 'list' ? (
+                                        <div className="flex flex-col gap-3 mb-10">
+                                            {filteredAndSortedHistory.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status={show.status} />)}
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
+                                            {filteredAndSortedHistory.map(show => (
+                                                <ShowCard 
+                                                    key={show.id} 
+                                                    show={show} 
+                                                    openShowModal={openShowModal} 
+                                                    isSaved={true}
+                                                    additionalUI={
+                                                        <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+                                                            {show.status === 'completed' && <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-green-400/50">COMPLETED</span>}
+                                                            {show.status === 'upToDate' && <span className="bg-purple-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-purple-400/50">UP TO DATE</span>}
+                                                            {show.status === 'toStart' && <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-blue-400/50">WATCHLIST</span>}
+                                                            {show.status === 'inProgress' && <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-red-400/50">{Math.round(show.progressPercentage)}%</span>}
+                                                            {show.rating > 0 && <span className="bg-black/80 text-yellow-500 text-[10px] font-bold px-2 py-1 rounded shadow-md border border-yellow-500/50"><i className="fas fa-star"></i> {show.rating}</span>}
+                                                        </div>
+                                                    }
+                                                />
+                                            ))}
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="text-center p-10 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted flex flex-col items-center">
+                                        <i className="fas fa-filter text-5xl mb-4 opacity-30"></i>
+                                        <p>No shows found for the selected filters.</p>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         )}
 
@@ -1043,7 +1164,6 @@ const App = () => {
                                     </div>
                                 </div>
 
-                                {/* LOGOUT BUTTON */}
                                 <div className="mt-12 mb-10 border-t border-surfaceLight pt-8">
                                     <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-transparent border border-red-600/50 text-red-500 hover:bg-red-600 hover:text-white font-bold py-3 px-4 rounded-xl transition-all">
                                         <i className="fas fa-sign-out-alt"></i> Logout Account
@@ -1054,7 +1174,6 @@ const App = () => {
                     </div>
                 </main>
 
-                {/* FULLSCREEN / WINDOWED MODAL */}
                 {selectedShow && (
                     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
                         <div className="absolute inset-0" onClick={closeModal}></div>
@@ -1069,11 +1188,11 @@ const App = () => {
                                     <i className={`fas fa-${isFullscreen ? 'compress' : 'expand'}`}></i>
                                 </button>
                                 <button 
-                                    onClick={() => toggleFavoriteShow(selectedShow)} 
+                                    onClick={() => toggleLibraryShow(selectedShow)} 
                                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all backdrop-blur-md border ${isShowSaved(selectedShow.id) ? 'bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.5)]' : 'bg-black/60 text-white hover:bg-surface border-white/10'}`} 
-                                    title={isShowSaved(selectedShow.id) ? "Remove from Favorites" : "Add to Favorites"}
+                                    title={isShowSaved(selectedShow.id) ? "Remove from Library (Wipes History)" : "Add to Library (Watchlist)"}
                                 >
-                                    <i className={`${isShowSaved(selectedShow.id) ? 'fas' : 'far'} fa-heart`}></i>
+                                    <i className={`${isShowSaved(selectedShow.id) ? 'fas' : 'far'} fa-bookmark`}></i>
                                 </button>
                                 <button 
                                     onClick={closeModal} 
@@ -1208,7 +1327,7 @@ const App = () => {
                                                                                 <button 
                                                                                     onClick={() => toggleWatchedEpisode(ep, showDetails.id)} 
                                                                                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${isWatched ? 'bg-primary/20 text-primary border-primary shadow-[0_0_10px_rgba(229,9,20,0.3)]' : 'bg-surfaceLight/30 text-textMuted border-transparent hover:border-textMuted hover:text-white'}`} 
-                                                                                    title={isWatched ? "Mark as unwatched" : "Mark as watched"}
+                                                                                    title={isWatched ? "Remove from watched" : "Mark as watched"}
                                                                                 >
                                                                                     <i className="fas fa-eye"></i>
                                                                                 </button>

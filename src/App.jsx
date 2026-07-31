@@ -260,26 +260,33 @@ const NavItem = ({ id, icon, label, activeTab, setActiveTab }) => {
     );
 };
 
-const ShowCard = ({ show, openShowModal, isSaved, additionalUI }) => (
-    <div onClick={() => openShowModal(show)} className="cursor-pointer group relative aspect-[2/3] bg-surfaceLight/30 rounded-xl border border-surfaceLight overflow-hidden transition-transform duration-300 hover:scale-105 hover:border-primary/50 shadow-md">
-        {show.poster_path ? (
-            <img src={`${TMDB_IMG_URL}${show.poster_path}`} alt={show.name} className="w-full h-full object-cover" loading="lazy" />
-        ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
-                <i className="fas fa-tv text-4xl text-surfaceLight mb-3"></i>
-                <span className="text-xs font-bold text-textMuted line-clamp-3">{show.name}</span>
+// Adapted to support both TV Shows (name) and Movies (title)
+const MediaCard = ({ item, openModal, isSaved, additionalUI }) => {
+    const title = item.name || item.title || "Unknown";
+    const date = item.first_air_date || item.release_date;
+    const year = date ? date.substring(0,4) : "";
+
+    return (
+        <div onClick={() => openModal(item)} className="cursor-pointer group relative aspect-[2/3] bg-surfaceLight/30 rounded-xl border border-surfaceLight overflow-hidden transition-transform duration-300 hover:scale-105 hover:border-primary/50 shadow-md">
+            {item.poster_path ? (
+                <img src={`${TMDB_IMG_URL}${item.poster_path}`} alt={title} className="w-full h-full object-cover" loading="lazy" />
+            ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
+                    <i className="fas fa-image text-4xl text-surfaceLight mb-3"></i>
+                    <span className="text-xs font-bold text-textMuted line-clamp-3">{title}</span>
+                </div>
+            )}
+            {isSaved && <div className="absolute top-2 right-2 bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-black/50 z-10"><i className="fas fa-bookmark text-sm"></i></div>}
+            
+            {additionalUI}
+            
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
+                <span className="text-white font-bold text-sm line-clamp-2">{title}</span>
+                {year && <span className="text-primary text-xs font-medium">{year}</span>}
             </div>
-        )}
-        {isSaved && <div className="absolute top-2 right-2 bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg shadow-black/50 z-10"><i className="fas fa-bookmark text-sm"></i></div>}
-        
-        {additionalUI}
-        
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
-            <span className="text-white font-bold text-sm line-clamp-2">{show.name}</span>
-            {show.first_air_date && <span className="text-primary text-xs font-medium">{show.first_air_date.substring(0,4)}</span>}
         </div>
-    </div>
-);
+    );
+};
 
 const ShowListRow = ({ show, openShowModal, status }) => (
     <div onClick={() => openShowModal(show)} className="flex items-center gap-4 bg-surfaceLight/10 hover:bg-surfaceLight/30 border border-surfaceLight/50 rounded-xl p-3 cursor-pointer transition-all group">
@@ -360,13 +367,13 @@ const DiscoverTab = ({ savedShowsData, openShowModal, isShowSaved }) => {
 
     return (
         <div className="p-4 md:p-8 animate-fade-in pb-24">
-            <h2 className="text-3xl font-bold mb-2">Discover</h2>
+            <h2 className="text-3xl font-bold mb-2">Discover Series</h2>
             <p className="text-textMuted mb-8">{savedShowsData && savedShowsData.length > 0 ? "Recommended for you based on your library." : "Trending shows worldwide this week."}</p>
             {isLoading ? (
                 <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div>
             ) : recommendations.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
-                    {recommendations.map(show => <ShowCard key={show.id} show={show} openShowModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
+                    {recommendations.map(show => <MediaCard key={show.id} item={show} openModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
                 </div>
             ) : (
                 <p className="text-textMuted">No recommendations available at the moment.</p>
@@ -397,7 +404,7 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
         )}
         {searchResults.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
-                {searchResults.map(show => <ShowCard key={show.id} show={show} openShowModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
+                {searchResults.map(show => <MediaCard key={show.id} item={show} openModal={openShowModal} isSaved={isShowSaved(show.id)} />)}
             </div>
         ) : (!isSearching && searchQuery.length === 0 && (
             <div className="flex-1 flex flex-col items-center justify-center text-textMuted opacity-50 pb-20">
@@ -408,38 +415,165 @@ const SearchTab = ({ searchQuery, setSearchQuery, isSearching, searchError, sear
     </div>
 );
 
+// --- NEW MOVIE TAB COMPONENT ---
+const MovieTab = ({ savedMoviesData, openMovieModal }) => {
+    const [subTab, setSubTab] = useState('toWatch'); // 'toWatch', 'watched', 'suggested'
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [trending, setTrending] = useState([]);
+
+    const toWatch = savedMoviesData.filter(m => m.status === 'toWatch').sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+    const watched = savedMoviesData.filter(m => m.status === 'watched').sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+
+    useEffect(() => {
+        if (subTab === 'suggested' && trending.length === 0) {
+            fetch(`${TMDB_BASE_URL}/trending/movie/week?api_key=${TMDB_API_KEY}`)
+                .then(res => res.json())
+                .then(data => setTrending(data.results || []))
+                .catch(e => console.error(e));
+        }
+    }, [subTab]);
+
+    useEffect(() => {
+        const delay = setTimeout(() => {
+            if (searchQuery.trim().length >= 2) {
+                setIsSearching(true);
+                fetch(`${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`)
+                    .then(res => res.json())
+                    .then(data => setSearchResults(data.results || []))
+                    .finally(() => setIsSearching(false));
+            } else {
+                setSearchResults([]);
+            }
+        }, 600);
+        return () => clearTimeout(delay);
+    }, [searchQuery]);
+
+    const isMovieSaved = (id) => savedMoviesData.some(m => m.id === id);
+    const getMovieStatus = (id) => {
+        const m = savedMoviesData.find(m => m.id === id);
+        return m ? m.status : null;
+    };
+
+    const renderMovieGrid = (movies, emptyMessage) => {
+        if (movies.length === 0) {
+            return (
+                <div className="flex-1 flex flex-col items-center justify-center text-textMuted opacity-50 py-20">
+                    <i className="fas fa-film text-6xl mb-4"></i>
+                    <p className="text-lg">{emptyMessage}</p>
+                </div>
+            );
+        }
+        return (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20 mt-6">
+                {movies.map(movie => {
+                    const status = getMovieStatus(movie.id);
+                    return (
+                        <MediaCard 
+                            key={movie.id} 
+                            item={movie} 
+                            openModal={openMovieModal} 
+                            isSaved={isMovieSaved(movie.id)}
+                            additionalUI={
+                                <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+                                    {status === 'watched' && <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-green-400/50">WATCHED</span>}
+                                    {status === 'toWatch' && <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-blue-400/50">TO WATCH</span>}
+                                </div>
+                            }
+                        />
+                    );
+                })}
+            </div>
+        );
+    };
+
+    return (
+        <div className="p-4 md:p-8 animate-fade-in flex flex-col h-full min-h-[80vh] pb-24">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                <div>
+                    <h2 className="text-3xl font-bold mb-2">Movies</h2>
+                    <p className="text-textMuted">Track and discover feature films.</p>
+                </div>
+                <div className="flex bg-surface border border-surfaceLight rounded-xl p-1 overflow-hidden shrink-0">
+                    <button onClick={() => setSubTab('toWatch')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${subTab === 'toWatch' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}>To Watch ({toWatch.length})</button>
+                    <button onClick={() => setSubTab('watched')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${subTab === 'watched' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}>Watched ({watched.length})</button>
+                    <button onClick={() => setSubTab('suggested')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${subTab === 'suggested' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}><i className="fas fa-sparkles mr-1"></i> Suggested</button>
+                </div>
+            </div>
+
+            {subTab === 'toWatch' && renderMovieGrid(toWatch, "Your watchlist is empty. Find some movies to watch!")}
+            {subTab === 'watched' && renderMovieGrid(watched, "You haven't marked any movies as watched yet.")}
+            
+            {subTab === 'suggested' && (
+                <div className="flex flex-col animate-fade-in">
+                    <div className="relative mb-6">
+                        <input 
+                            type="text" 
+                            value={searchQuery} 
+                            onChange={(e) => setSearchQuery(e.target.value)} 
+                            placeholder="Search for movies..." 
+                            className="w-full bg-surface border border-surfaceLight rounded-full py-4 px-6 pl-14 text-white focus:outline-none focus:border-primary focus:shadow-[0_0_15px_rgba(229,9,20,0.3)] transition-all text-lg" 
+                        />
+                        <i className="fas fa-search absolute left-6 top-1/2 -translate-y-1/2 text-textMuted text-lg"></i>
+                        {isSearching && <i className="fas fa-spinner fa-spin absolute right-6 top-1/2 -translate-y-1/2 text-primary text-lg"></i>}
+                    </div>
+                    
+                    {searchQuery.length >= 2 ? (
+                        <>
+                            <h3 className="text-xl font-bold text-white mb-2">Search Results</h3>
+                            {renderMovieGrid(searchResults, "No movies found matching your search.")}
+                        </>
+                    ) : (
+                        <>
+                            <h3 className="text-xl font-bold text-white mb-2"><i className="fas fa-fire text-primary mr-2"></i> Trending Worldwide</h3>
+                            {renderMovieGrid(trending, "Loading trending movies...")}
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 const App = () => {
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     
     const [activeTab, setActiveTab] = useState('home');
     const [modalDefaultFS, setModalDefaultFS] = useState(() => localStorage.getItem('tvtensei_fs_modal') === 'true');
+    
+    // UI states for Modals
     const [isFullscreen, setIsFullscreen] = useState(modalDefaultFS);
+    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
+    // TV States
     const [savedShowsData, setSavedShowsData] = useState([]);
     const [watchedEpisodesData, setWatchedEpisodesData] = useState([]);
-
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState('');
-
     const [selectedShow, setSelectedShow] = useState(null);
     const [showDetails, setShowDetails] = useState(null);
     const [expandedSeason, setExpandedSeason] = useState(null);
     const [seasonEpisodes, setSeasonEpisodes] = useState({});
-    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-
     const [upcomingEpisodes, setUpcomingEpisodes] = useState([]);
     const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
 
+    // Movie States
+    const [savedMoviesData, setSavedMoviesData] = useState([]);
+    const [selectedMovie, setSelectedMovie] = useState(null);
+    const [movieDetails, setMovieDetails] = useState(null);
+
+    // Profile States
     const [stats, setStats] = useState({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
     const [isCalculatingStats, setIsCalculatingStats] = useState(false);
-    
     const [isImporting, setIsImporting] = useState(false);
     const [importStatus, setImportStatus] = useState("");
     
-    // Advanced History States
+    // History States
     const [historyShows, setHistoryShows] = useState([]);
     const [historyViewMode, setHistoryViewMode] = useState('list'); 
     const [historySortBy, setHistorySortBy] = useState('recent'); 
@@ -461,15 +595,18 @@ const App = () => {
             await signOut(auth);
             setSavedShowsData([]);
             setWatchedEpisodesData([]);
+            setSavedMoviesData([]);
         } catch (error) {
             console.error("Error during logout", error);
         }
     };
 
+    // Global Data Sync
     useEffect(() => {
         if (!currentUid) {
             setSavedShowsData([]);
             setWatchedEpisodesData([]);
+            setSavedMoviesData([]);
             return;
         }
         const unsubShows = onSnapshot(collection(db, 'users', currentUid, 'shows'), (snapshot) => {
@@ -482,9 +619,19 @@ const App = () => {
             snapshot.forEach(d => newEps.push({ id: d.id, ...d.data() }));
             setWatchedEpisodesData(newEps);
         });
-        return () => { unsubShows(); unsubEps(); };
+        const unsubMovies = onSnapshot(collection(db, 'users', currentUid, 'movies'), (snapshot) => {
+            const newMovies = [];
+            snapshot.forEach(d => newMovies.push({ id: Number(d.id), ...d.data() }));
+            setSavedMoviesData(newMovies);
+        });
+
+        return () => { unsubShows(); unsubEps(); unsubMovies(); };
     }, [currentUid]);
 
+
+    // ==========================================
+    // TV SHOWS HANDLERS
+    // ==========================================
     const isShowSaved = (showId) => savedShowsData.some(s => s.id === showId);
     const getWatchedEpisodeData = (showId, seasonNum, epNum) => watchedEpisodesData.find(w => w.show_id === showId && w.season_number === seasonNum && w.episode_number === epNum);
 
@@ -589,6 +736,38 @@ const App = () => {
         }
     };
 
+    // ==========================================
+    // MOVIE HANDLERS
+    // ==========================================
+    const isMovieSaved = (id) => savedMoviesData.some(m => m.id === id);
+    
+    const setMovieStatus = async (movie, status) => {
+        if(!currentUid) return;
+        const docRef = doc(db, 'users', currentUid, 'movies', movie.id.toString());
+        try {
+            await setDoc(docRef, { 
+                title: movie.title || movie.name || "Unknown", 
+                poster_path: movie.poster_path || null, 
+                release_date: movie.release_date || null,
+                status: status,
+                added_at: new Date().toISOString()
+            }, { merge: true });
+        } catch (e) { console.error(e); }
+    };
+
+    const removeMovie = async (movieId) => {
+        if(!currentUid) return;
+        try {
+            await deleteDoc(doc(db, 'users', currentUid, 'movies', movieId.toString()));
+            if (selectedMovie && selectedMovie.id === movieId) {
+                closeModal(); // Optional: close modal on remove
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    // ==========================================
+    // IMPORTS & BACKGROUND PROCESSES
+    // ==========================================
     const handleZipImport = async (event) => {
         const file = event.target.files[0];
         if (!file || !currentUid) return;
@@ -833,6 +1012,7 @@ const App = () => {
         const timeoutId = setTimeout(calculateStats, 1000); return () => clearTimeout(timeoutId);
     }, [watchedEpisodesData, savedShowsData]);
 
+    // Sorting Logics
     const filteredAndSortedHistory = [...historyShows]
         .filter(show => historyFilterStatus === 'all' || show.status === historyFilterStatus)
         .sort((a, b) => {
@@ -851,6 +1031,7 @@ const App = () => {
             return historySortDirection === 'desc' ? res : -res;
         });
 
+    // --- MODAL OPENERS ---
     const openShowModal = async (show) => {
         setIsFullscreen(modalDefaultFS); setSelectedShow(show); setShowDetails(null); setExpandedSeason(null); setSeasonEpisodes({}); setIsLoadingDetails(true);
         try {
@@ -863,6 +1044,15 @@ const App = () => {
                     show_status: data.status || null
                 }, { merge: true });
             }
+        } catch (err) {} finally { setIsLoadingDetails(false); }
+    };
+
+    const openMovieModal = async (movie) => {
+        setIsFullscreen(modalDefaultFS); setSelectedMovie(movie); setMovieDetails(null); setIsLoadingDetails(true);
+        try {
+            const res = await fetch(`${TMDB_BASE_URL}/movie/${movie.id}?api_key=${TMDB_API_KEY}&language=en-US`);
+            const data = await res.json();
+            setMovieDetails(data);
         } catch (err) {} finally { setIsLoadingDetails(false); }
     };
     
@@ -880,7 +1070,7 @@ const App = () => {
         }
     };
     
-    const closeModal = () => setSelectedShow(null);
+    const closeModal = () => { setSelectedShow(null); setSelectedMovie(null); };
     const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
     const toggleDefaultFS = () => { const newVal = !modalDefaultFS; setModalDefaultFS(newVal); localStorage.setItem('tvtensei_fs_modal', newVal); };
 
@@ -893,9 +1083,7 @@ const App = () => {
         );
     }
 
-    if (!user) {
-        return <AuthScreen />;
-    }
+    if (!user) return <AuthScreen />;
 
     return (
         <ErrorBoundary>
@@ -910,6 +1098,7 @@ const App = () => {
                     <div className="flex w-full md:flex-col gap-0 md:gap-2">
                         <NavItem id="home" icon="compass" label="Discover" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="search" icon="search" label="Search" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                        <NavItem id="movies" icon="film" label="Movies" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="history" icon="list-ul" label="Library" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="calendar" icon="calendar-days" label="Calendar" activeTab={activeTab} setActiveTab={setActiveTab}/>
                         <NavItem id="profile" icon="user" label="Profile" activeTab={activeTab} setActiveTab={setActiveTab}/>
@@ -928,6 +1117,13 @@ const App = () => {
                         {activeTab === 'home' && <DiscoverTab savedShowsData={savedShowsData} openShowModal={openShowModal} isShowSaved={isShowSaved} />}
                         {activeTab === 'search' && <SearchTab searchQuery={searchQuery} setSearchQuery={setSearchQuery} isSearching={isSearching} searchError={searchError} searchResults={searchResults} openShowModal={openShowModal} isShowSaved={isShowSaved} />}
                         
+                        {activeTab === 'movies' && (
+                            <MovieTab 
+                                savedMoviesData={savedMoviesData} 
+                                openMovieModal={openMovieModal} 
+                            />
+                        )}
+
                         {activeTab === 'calendar' && (
                             <div className="p-4 md:p-8 animate-fade-in pb-24">
                                 <h2 className="text-3xl font-bold mb-2">Calendar</h2>
@@ -971,7 +1167,6 @@ const App = () => {
                             </div>
                         )}
 
-                        {}
                         {activeTab === 'history' && (
                             <div className="p-4 md:p-8 animate-fade-in pb-24">
                             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
@@ -988,11 +1183,11 @@ const App = () => {
                                             onChange={(e) => setHistoryFilterStatus(e.target.value)}
                                             className="bg-transparent focus:outline-none cursor-pointer"
                                         >
-                                            <option value="all" className="bg-surface text-white">All Shows</option>
                                             <option value="inProgress" className="bg-surface text-white">In Progress</option>
                                             <option value="upToDate" className="bg-surface text-white">Up to Date</option>
                                             <option value="completed" className="bg-surface text-white">Completed</option>
                                             <option value="toStart" className="bg-surface text-white">Watchlist</option>
+                                            <option value="all" className="bg-surface text-white">All Shows</option>
                                         </select>
                                     </div>
 
@@ -1048,10 +1243,10 @@ const App = () => {
                                     ) : (
                                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
                                             {filteredAndSortedHistory.map(show => (
-                                                <ShowCard 
+                                                <MediaCard 
                                                     key={show.id} 
-                                                    show={show} 
-                                                    openShowModal={openShowModal} 
+                                                    item={show} 
+                                                    openModal={openShowModal} 
                                                     isSaved={true}
                                                     additionalUI={
                                                         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
@@ -1174,6 +1369,7 @@ const App = () => {
                     </div>
                 </main>
 
+                {/* --- TV SHOW MODAL --- */}
                 {selectedShow && (
                     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
                         <div className="absolute inset-0" onClick={closeModal}></div>
@@ -1345,6 +1541,107 @@ const App = () => {
                                 ) : (
                                     <p className="text-textMuted">No additional details found.</p>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- MOVIE MODAL --- */}
+                {selectedMovie && (
+                    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
+                        <div className="absolute inset-0" onClick={closeModal}></div>
+                        <div className={`bg-surface flex flex-col overflow-hidden relative shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-surfaceLight z-10 animate-fade-in transition-all duration-300 ${isFullscreen ? 'w-full h-full max-w-none rounded-none' : 'w-full max-w-2xl max-h-[90vh] md:h-auto md:rounded-2xl rounded-t-3xl'}`}>
+                            
+                            <div className="absolute top-4 right-4 z-20 flex gap-2 md:gap-3">
+                                <button 
+                                    onClick={toggleFullscreen} 
+                                    className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 hidden md:flex" 
+                                    title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                                >
+                                    <i className={`fas fa-${isFullscreen ? 'compress' : 'expand'}`}></i>
+                                </button>
+                                <button 
+                                    onClick={closeModal} 
+                                    className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10"
+                                >
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+
+                            <div className="relative h-56 md:h-80 flex-shrink-0 bg-surfaceLight">
+                                {selectedMovie.backdrop_path ? (
+                                    <img src={`${TMDB_BACKDROP_URL}${selectedMovie.backdrop_path}`} className="w-full h-full object-cover" alt="Backdrop" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center opacity-20">
+                                        <i className="fas fa-film text-6xl"></i>
+                                    </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
+                                <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full flex items-end gap-6">
+                                    <div className="hidden md:block flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 border-surfaceLight/50 shadow-2xl">
+                                         {selectedMovie.poster_path ? <img src={`${TMDB_IMG_URL}${selectedMovie.poster_path}`} className="w-full" alt="Poster" /> : null}
+                                    </div>
+                                    <div className="flex-1">
+                                        <h2 className="text-3xl md:text-5xl font-extrabold text-white mb-2 shadow-black drop-shadow-xl tracking-tight">{selectedMovie.title}</h2>
+                                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-300 font-medium bg-black/40 w-max max-w-full px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
+                                            <span className="flex items-center shrink-0"><i className="fas fa-star text-yellow-500 mr-1.5"></i> {selectedMovie.vote_average?.toFixed(1)}/10</span>
+                                            {selectedMovie.release_date && <span className="shrink-0">• {selectedMovie.release_date.substring(0,4)}</span>}
+                                            {movieDetails?.runtime > 0 && <span className="shrink-0">• {movieDetails.runtime} min</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 md:p-8">
+                                <div className="mb-8">
+                                    <h3 className="text-lg font-bold text-white mb-3">Synopsis</h3>
+                                    <p className="text-gray-300 leading-relaxed text-sm md:text-base">{movieDetails?.overview || selectedMovie.overview || "No synopsis available for this movie."}</p>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row gap-4 mt-8 border-t border-surfaceLight pt-8">
+                                    {isMovieSaved(selectedMovie.id) ? (
+                                        <>
+                                            <div className="flex-1 bg-surfaceLight/20 border border-surfaceLight rounded-xl p-4 flex items-center justify-between">
+                                                <span className="text-textMuted font-bold text-sm">Status</span>
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={() => setMovieStatus(selectedMovie, 'toWatch')}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'toWatch' ? 'bg-blue-500 text-white' : 'bg-surface border border-surfaceLight text-textMuted hover:text-white'}`}
+                                                    >
+                                                        TO WATCH
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setMovieStatus(selectedMovie, 'watched')}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'watched' ? 'bg-green-500 text-white' : 'bg-surface border border-surfaceLight text-textMuted hover:text-white'}`}
+                                                    >
+                                                        WATCHED
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => removeMovie(selectedMovie.id)}
+                                                className="shrink-0 flex items-center justify-center bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-6 py-4 rounded-xl transition-colors font-bold"
+                                            >
+                                                <i className="fas fa-trash-alt mr-2"></i> Remove
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button 
+                                                onClick={() => setMovieStatus(selectedMovie, 'toWatch')}
+                                                className="flex-1 flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-4 rounded-xl transition-colors font-bold shadow-lg shadow-blue-500/20"
+                                            >
+                                                <i className="fas fa-bookmark"></i> Add to "To Watch"
+                                            </button>
+                                            <button 
+                                                onClick={() => setMovieStatus(selectedMovie, 'watched')}
+                                                className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-6 py-4 rounded-xl transition-colors font-bold shadow-lg shadow-green-500/20"
+                                            >
+                                                <i className="fas fa-check-circle"></i> Mark as Watched
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

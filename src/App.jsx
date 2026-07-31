@@ -41,6 +41,16 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
+// Safe formatters to prevent runtime crashes if TMDB returns unexpected types
+const getYear = (dateString) => {
+    return (typeof dateString === 'string' && dateString.length >= 4) ? dateString.substring(0, 4) : "";
+};
+
+const formatRating = (rating) => {
+    const num = parseFloat(rating);
+    return !isNaN(num) ? num.toFixed(1) : "0.0";
+};
+
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
@@ -59,7 +69,7 @@ class ErrorBoundary extends React.Component {
     render() {
         if (this.state.hasError) {
             return (
-                <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 text-center text-white">
+                <div className="min-h-screen w-full bg-background flex flex-col items-center justify-center p-8 text-center text-white fixed inset-0 z-[9999]">
                     <i className="fas fa-bug text-primary text-6xl mb-6 animate-bounce"></i>
                     <h1 className="text-3xl font-bold mb-4">Oops! The App Crashed.</h1>
                     <p className="text-textMuted mb-6 max-w-lg">
@@ -70,7 +80,7 @@ class ErrorBoundary extends React.Component {
                         <br /><br />
                         {this.state.errorInfo && this.state.errorInfo.componentStack}
                     </div>
-                    <button onClick={() => window.location.reload()} className="mt-8 bg-primary hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg transition-colors">
+                    <button onClick={() => window.location.reload()} className="mt-8 bg-primary hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg transition-colors shadow-[0_0_15px_rgba(229,9,20,0.4)]">
                         Reload App
                     </button>
                 </div>
@@ -262,8 +272,7 @@ const NavItem = ({ id, icon, label, activeTab, setActiveTab }) => {
 
 const MediaCard = ({ item, openModal, isSaved, additionalUI }) => {
     const title = item.name || item.title || "Unknown";
-    const date = item.first_air_date || item.release_date;
-    const year = date ? date.substring(0,4) : "";
+    const year = getYear(item.first_air_date || item.release_date);
 
     return (
         <div onClick={() => openModal(item)} className="cursor-pointer group relative aspect-[2/3] bg-surfaceLight/30 rounded-xl border border-surfaceLight overflow-hidden transition-transform duration-300 hover:scale-105 hover:border-primary/50 shadow-md">
@@ -426,7 +435,6 @@ const MovieTab = ({ activeTab, setActiveTab, savedMoviesData, openMovieModal }) 
     useEffect(() => {
         if (activeTab === 'movies-suggested' && recommendations.length === 0) {
             const fetchSuggestions = async () => {
-                // Find highest rated watched movies
                 const watchedMovies = savedMoviesData.filter(m => m.status === 'watched' && (m.rating || 0) > 0);
                 
                 if (watchedMovies.length === 0) {
@@ -437,7 +445,6 @@ const MovieTab = ({ activeTab, setActiveTab, savedMoviesData, openMovieModal }) 
                     } catch(e) { console.error(e) }
                 } else {
                     try {
-                        // Take top 3 rated movies
                         const topMovies = [...watchedMovies].sort((a,b) => b.rating - a.rating).slice(0, 3);
                         let recs = [];
                         for (let m of topMovies) {
@@ -531,7 +538,7 @@ const MovieTab = ({ activeTab, setActiveTab, savedMoviesData, openMovieModal }) 
                 <div className="flex md:hidden bg-surface border border-surfaceLight rounded-xl p-1 overflow-x-auto shrink-0 hide-scrollbar mt-2">
                     <button onClick={() => setActiveTab('movies-towatch')} className={`flex-1 min-w-max px-4 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'movies-towatch' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}>To Watch ({toWatch.length})</button>
                     <button onClick={() => setActiveTab('movies-watched')} className={`flex-1 min-w-max px-4 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'movies-watched' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}>Watched ({watched.length})</button>
-                    <button onClick={() => setActiveTab('movies-suggested')} className={`flex-1 min-w-max px-4 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'movies-suggested' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}><i className="fas fa-sparkles mr-1"></i> Suggested</button>
+                    <button onClick={() => setActiveTab('movies-suggested')} className={`flex-1 flex items-center justify-center min-w-max px-4 py-2 text-sm font-bold rounded-lg transition-colors gap-2 ${activeTab === 'movies-suggested' ? 'bg-primary text-white' : 'text-textMuted hover:text-white'}`}><i className="fas fa-fire"></i> Suggested</button>
                 </div>
             </div>
 
@@ -569,7 +576,7 @@ const MovieTab = ({ activeTab, setActiveTab, savedMoviesData, openMovieModal }) 
     );
 };
 
-const App = () => {
+const MainApp = () => {
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     
@@ -661,6 +668,7 @@ const App = () => {
 
 
     const isShowSaved = (showId) => savedShowsData.some(s => s.id === showId);
+    const isMovieSaved = (movieId) => savedMoviesData.some(m => m.id === movieId);
     const getWatchedEpisodeData = (showId, seasonNum, epNum) => watchedEpisodesData.find(w => w.show_id === showId && w.season_number === seasonNum && w.episode_number === epNum);
 
     const toggleLibraryShow = async (show) => {
@@ -942,7 +950,7 @@ const App = () => {
                 const s = { ...show, watched_count: count };
 
                 s.last_watched_at = showLastWatched[show.id] || show.added_at || 0;
-                s.year = s.first_air_date ? parseInt(s.first_air_date.substring(0, 4)) : 0;
+                s.year = show.first_air_date ? parseInt(show.first_air_date.substring(0, 4)) : 0;
 
                 if (count === 0) {
                     s.status = 'toStart';
@@ -1109,619 +1117,627 @@ const App = () => {
     if (!user) return <AuthScreen />;
 
     return (
-        <ErrorBoundary>
-            <div className="flex flex-col md:flex-row h-screen bg-background font-sans text-textMain">
-                
-                {/* Navbar / Sidebar */}
-                <nav className="order-2 md:order-1 w-full md:w-64 bg-surface border-t md:border-t-0 md:border-r border-surfaceLight flex md:flex-col justify-around md:justify-start pb-safe md:py-8 z-20 flex-shrink-0 relative">
-                    <div className="hidden md:flex px-6 mb-10 items-center gap-3">
-                        <div className="bg-primary text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(229,9,20,0.3)]">
-                            <i className="fas fa-play"></i>
-                        </div>
-                        <h1 className="text-2xl font-bold tracking-tight">TV<span className="text-primary">Tensei</span></h1>
+        <div className="flex flex-col md:flex-row h-screen bg-background font-sans text-textMain">
+            
+            {/* Navbar / Sidebar */}
+            <nav className="order-2 md:order-1 w-full md:w-64 bg-surface border-t md:border-t-0 md:border-r border-surfaceLight flex md:flex-col justify-around md:justify-start pb-safe md:py-8 z-20 flex-shrink-0 relative">
+                <div className="hidden md:flex px-6 mb-10 items-center gap-3">
+                    <div className="bg-primary text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(229,9,20,0.3)]">
+                        <i className="fas fa-play"></i>
                     </div>
-                    <div className="flex w-full md:flex-col gap-0 md:gap-2">
-                        <NavItem id="home" icon="compass" label="Discover" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                        <NavItem id="search" icon="search" label="Search" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <h1 className="text-2xl font-bold tracking-tight">TV<span className="text-primary">Tensei</span></h1>
+                </div>
+                <div className="flex w-full md:flex-col gap-0 md:gap-2">
+                    <NavItem id="home" icon="compass" label="Discover" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="search" icon="search" label="Search" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    
+                    {/* Movies with Sub-list for Desktop */}
+                    <div className="flex flex-col w-full md:w-auto relative group">
+                        <button 
+                            onClick={() => setActiveTab(activeTab.startsWith('movies') ? activeTab : 'movies-towatch')}
+                            className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:w-auto py-3 md:py-4 md:px-6 gap-1 md:gap-4 transition-all duration-300 ${
+                                activeTab.startsWith('movies') ? 'text-white md:border-r-4 border-primary bg-surfaceLight/30 md:bg-transparent' : 'text-textMuted hover:text-white hover:bg-surfaceLight/20 md:hover:bg-transparent'
+                            }`}
+                        >
+                            <i className={`fas fa-film text-xl md:text-2xl ${activeTab.startsWith('movies') ? 'text-primary scale-110' : ''} transition-all`}></i>
+                            <span className={`text-[10px] md:text-base font-medium mt-1 md:mt-0 ${activeTab.startsWith('movies') ? 'text-primary' : ''}`}>Movies</span>
+                        </button>
                         
-                        {/* Movies with Sub-list for Desktop */}
-                        <div className="flex flex-col w-full md:w-auto relative group">
-                            <button 
-                                onClick={() => setActiveTab(activeTab.startsWith('movies') ? activeTab : 'movies-towatch')}
-                                className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:w-auto py-3 md:py-4 md:px-6 gap-1 md:gap-4 transition-all duration-300 ${
-                                    activeTab.startsWith('movies') ? 'text-white md:border-r-4 border-primary bg-surfaceLight/30 md:bg-transparent' : 'text-textMuted hover:text-white hover:bg-surfaceLight/20 md:hover:bg-transparent'
-                                }`}
-                            >
-                                <i className={`fas fa-film text-xl md:text-2xl ${activeTab.startsWith('movies') ? 'text-primary scale-110' : ''} transition-all`}></i>
-                                <span className={`text-[10px] md:text-base font-medium mt-1 md:mt-0 ${activeTab.startsWith('movies') ? 'text-primary' : ''}`}>Movies</span>
-                            </button>
-                            
-                            {/* Sublist Desktop (Hidden on Mobile) */}
-                            {activeTab.startsWith('movies') && (
-                                <div className="hidden md:flex flex-col pl-14 mt-1 space-y-1 mb-2">
-                                    <button onClick={() => setActiveTab('movies-towatch')} className={`flex items-center gap-3 py-2 px-3 rounded-lg transition-all text-sm ${activeTab === 'movies-towatch' ? 'text-white bg-surfaceLight/30 border-l-2 border-primary' : 'text-textMuted hover:text-white'}`}><i className="fas fa-bookmark text-xs"></i> To Watch</button>
-                                    <button onClick={() => setActiveTab('movies-watched')} className={`flex items-center gap-3 py-2 px-3 rounded-lg transition-all text-sm ${activeTab === 'movies-watched' ? 'text-white bg-surfaceLight/30 border-l-2 border-primary' : 'text-textMuted hover:text-white'}`}><i className="fas fa-check-circle text-xs"></i> Watched</button>
-                                    <button onClick={() => setActiveTab('movies-suggested')} className={`flex items-center gap-3 py-2 px-3 rounded-lg transition-all text-sm ${activeTab === 'movies-suggested' ? 'text-white bg-surfaceLight/30 border-l-2 border-primary' : 'text-textMuted hover:text-white'}`}><i className="fas fa-sparkles text-xs text-primary"></i> Suggested</button>
+                        {/* Sublist Desktop (Hidden on Mobile) */}
+                        {activeTab.startsWith('movies') && (
+                            <div className="hidden md:flex flex-col pl-14 mt-1 space-y-1 mb-2">
+                                <button onClick={() => setActiveTab('movies-towatch')} className={`flex items-center gap-3 py-2 px-3 rounded-lg transition-all text-sm ${activeTab === 'movies-towatch' ? 'text-white bg-surfaceLight/30 border-l-2 border-primary' : 'text-textMuted hover:text-white'}`}><i className="fas fa-bookmark text-xs"></i> To Watch</button>
+                                <button onClick={() => setActiveTab('movies-watched')} className={`flex items-center gap-3 py-2 px-3 rounded-lg transition-all text-sm ${activeTab === 'movies-watched' ? 'text-white bg-surfaceLight/30 border-l-2 border-primary' : 'text-textMuted hover:text-white'}`}><i className="fas fa-check-circle text-xs"></i> Watched</button>
+                                <button onClick={() => setActiveTab('movies-suggested')} className={`flex items-center gap-3 py-2 px-3 rounded-lg transition-all text-sm ${activeTab === 'movies-suggested' ? 'text-white bg-surfaceLight/30 border-l-2 border-primary' : 'text-textMuted hover:text-white'}`}><i className="fas fa-fire text-xs text-primary"></i> Suggested</button>
+                            </div>
+                        )}
+                    </div>
+
+                    <NavItem id="history" icon="list-ul" label="Library" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="calendar" icon="calendar-days" label="Calendar" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                    <NavItem id="profile" icon="user" label="Profile" activeTab={activeTab} setActiveTab={setActiveTab}/>
+                </div>
+            </nav>
+
+            {/* Mobile Top Header */}
+            <header className="md:hidden order-1 bg-surface border-b border-surfaceLight p-4 flex items-center justify-center z-10 sticky top-0">
+                <div className="bg-primary text-white w-7 h-7 rounded-md flex items-center justify-center mr-2 shadow-[0_0_10px_rgba(229,9,20,0.3)]">
+                    <i className="fas fa-play text-xs"></i>
+                </div>
+                <h1 className="text-xl font-bold tracking-tight">TV<span className="text-primary">Tensei</span></h1>
+            </header>
+
+            {/* Main Content Area */}
+            <main className="order-1 md:order-2 flex-1 overflow-y-auto hide-scrollbar relative pb-16 md:pb-0 bg-background">
+                <div className="max-w-6xl mx-auto">
+                    
+                    {activeTab === 'home' && <DiscoverTab savedShowsData={savedShowsData} openShowModal={openShowModal} isShowSaved={isShowSaved} />}
+                    
+                    {activeTab === 'search' && <SearchTab searchQuery={searchQuery} setSearchQuery={setSearchQuery} isSearching={isSearching} searchError={searchError} searchResults={searchResults} openShowModal={openShowModal} isShowSaved={isShowSaved} />}
+                    
+                    {activeTab.startsWith('movies') && (
+                        <MovieTab 
+                            activeTab={activeTab}
+                            setActiveTab={setActiveTab}
+                            savedMoviesData={savedMoviesData} 
+                            openMovieModal={openMovieModal} 
+                        />
+                    )}
+
+                    {activeTab === 'calendar' && (
+                        <div className="p-4 md:p-8 animate-fade-in pb-24">
+                            <h2 className="text-3xl font-bold mb-2">Calendar</h2>
+                            <p className="text-textMuted mb-8">Upcoming episodes for shows in your library.</p>
+                            {isLoadingCalendar ? (
+                                <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div>
+                            ) : upcomingEpisodes.length > 0 ? (
+                                <div className="space-y-4">
+                                    {upcomingEpisodes.map(item => (
+                                        <div 
+                                            key={item.episode.id} 
+                                            onClick={() => openShowModal({ id: item.showId, name: item.showName, poster_path: item.posterPath })} 
+                                            className="bg-surface p-4 rounded-xl border border-surfaceLight flex items-center gap-4 transition-transform hover:-translate-y-1 cursor-pointer hover:border-primary/50"
+                                        >
+                                            {item.posterPath ? (
+                                                <img src={`${TMDB_IMG_URL}${item.posterPath}`} className="w-16 h-24 object-cover rounded-lg shadow-md" alt={item.showName} />
+                                            ) : (
+                                                <div className="w-16 h-24 bg-surfaceLight/50 rounded-lg flex items-center justify-center text-textMuted">
+                                                    <i className="fas fa-tv"></i>
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs text-primary font-bold mb-1 truncate">{item.showName}</div>
+                                                <div className="text-sm md:text-lg font-bold text-white mb-1 truncate">{item.episode.name}</div>
+                                                <div className="text-xs md:text-sm text-textMuted">Season {item.episode.season_number} • Episode {item.episode.episode_number}</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-white font-bold text-xs md:text-sm bg-primary px-3 py-1 rounded-full shadow-[0_0_10px_rgba(229,9,20,0.5)] whitespace-nowrap">
+                                                    {item.episode.air_date ? item.episode.air_date.split('-').reverse().join('/') : 'TBA'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center p-8 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted">
+                                    <i className="fas fa-calendar-times text-4xl mb-3 opacity-50"></i>
+                                    <p>No upcoming episodes found for your shows.</p>
                                 </div>
                             )}
                         </div>
+                    )}
 
-                        <NavItem id="history" icon="list-ul" label="Library" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                        <NavItem id="calendar" icon="calendar-days" label="Calendar" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                        <NavItem id="profile" icon="user" label="Profile" activeTab={activeTab} setActiveTab={setActiveTab}/>
-                    </div>
-                </nav>
-
-                {/* Mobile Top Header */}
-                <header className="md:hidden order-1 bg-surface border-b border-surfaceLight p-4 flex items-center justify-center z-10 sticky top-0">
-                    <div className="bg-primary text-white w-7 h-7 rounded-md flex items-center justify-center mr-2 shadow-[0_0_10px_rgba(229,9,20,0.3)]">
-                        <i className="fas fa-play text-xs"></i>
-                    </div>
-                    <h1 className="text-xl font-bold tracking-tight">TV<span className="text-primary">Tensei</span></h1>
-                </header>
-
-                {/* Main Content Area */}
-                <main className="order-1 md:order-2 flex-1 overflow-y-auto hide-scrollbar relative pb-16 md:pb-0 bg-background">
-                    <div className="max-w-6xl mx-auto">
-                        
-                        {activeTab === 'home' && <DiscoverTab savedShowsData={savedShowsData} openShowModal={openShowModal} isShowSaved={isShowSaved} />}
-                        
-                        {activeTab === 'search' && <SearchTab searchQuery={searchQuery} setSearchQuery={setSearchQuery} isSearching={isSearching} searchError={searchError} searchResults={searchResults} openShowModal={openShowModal} isShowSaved={isShowSaved} />}
-                        
-                        {activeTab.startsWith('movies') && (
-                            <MovieTab 
-                                activeTab={activeTab}
-                                setActiveTab={setActiveTab}
-                                savedMoviesData={savedMoviesData} 
-                                openMovieModal={openMovieModal} 
-                            />
-                        )}
-
-                        {activeTab === 'calendar' && (
-                            <div className="p-4 md:p-8 animate-fade-in pb-24">
-                                <h2 className="text-3xl font-bold mb-2">Calendar</h2>
-                                <p className="text-textMuted mb-8">Upcoming episodes for shows in your library.</p>
-                                {isLoadingCalendar ? (
-                                    <div className="flex justify-center p-10"><i className="fas fa-spinner fa-spin text-primary text-4xl"></i></div>
-                                ) : upcomingEpisodes.length > 0 ? (
-                                    <div className="space-y-4">
-                                        {upcomingEpisodes.map(item => (
-                                            <div 
-                                                key={item.episode.id} 
-                                                onClick={() => openShowModal({ id: item.showId, name: item.showName, poster_path: item.posterPath })} 
-                                                className="bg-surface p-4 rounded-xl border border-surfaceLight flex items-center gap-4 transition-transform hover:-translate-y-1 cursor-pointer hover:border-primary/50"
-                                            >
-                                                {item.posterPath ? (
-                                                    <img src={`${TMDB_IMG_URL}${item.posterPath}`} className="w-16 h-24 object-cover rounded-lg shadow-md" alt={item.showName} />
-                                                ) : (
-                                                    <div className="w-16 h-24 bg-surfaceLight/50 rounded-lg flex items-center justify-center text-textMuted">
-                                                        <i className="fas fa-tv"></i>
-                                                    </div>
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-xs text-primary font-bold mb-1 truncate">{item.showName}</div>
-                                                    <div className="text-sm md:text-lg font-bold text-white mb-1 truncate">{item.episode.name}</div>
-                                                    <div className="text-xs md:text-sm text-textMuted">Season {item.episode.season_number} • Episode {item.episode.episode_number}</div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-white font-bold text-xs md:text-sm bg-primary px-3 py-1 rounded-full shadow-[0_0_10px_rgba(229,9,20,0.5)] whitespace-nowrap">
-                                                        {item.episode.air_date ? item.episode.air_date.split('-').reverse().join('/') : 'TBA'}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center p-8 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted">
-                                        <i className="fas fa-calendar-times text-4xl mb-3 opacity-50"></i>
-                                        <p>No upcoming episodes found for your shows.</p>
-                                    </div>
-                                )}
+                    {activeTab === 'history' && (
+                        <div className="p-4 md:p-8 animate-fade-in pb-24">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                            <div>
+                                <h2 className="text-3xl font-bold mb-2">Library</h2>
+                                <p className="text-textMuted">Your full watchlist and watched history.</p>
                             </div>
-                        )}
-
-                        {activeTab === 'history' && (
-                            <div className="p-4 md:p-8 animate-fade-in pb-24">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                                <div>
-                                    <h2 className="text-3xl font-bold mb-2">Library</h2>
-                                    <p className="text-textMuted">Your full watchlist and watched history.</p>
+                            
+                            <div className="flex flex-wrap items-center gap-3 bg-surfaceLight/10 p-2 rounded-xl border border-surfaceLight">
+                                <div className="flex items-center gap-2 bg-surface text-white text-sm rounded-lg px-3 py-2 border border-surfaceLight focus-within:border-primary transition-colors">
+                                    <span className="text-textMuted font-medium">Filter:</span>
+                                    <select 
+                                        value={historyFilterStatus} 
+                                        onChange={(e) => setHistoryFilterStatus(e.target.value)}
+                                        className="bg-transparent focus:outline-none cursor-pointer"
+                                    >
+                                        <option value="inProgress" className="bg-surface text-white">In Progress</option>
+                                        <option value="upToDate" className="bg-surface text-white">Up to Date</option>
+                                        <option value="completed" className="bg-surface text-white">Completed</option>
+                                        <option value="toStart" className="bg-surface text-white">Watchlist (To Start)</option>
+                                        <option value="all" className="bg-surface text-white">All Shows</option>
+                                    </select>
                                 </div>
-                                
-                                <div className="flex flex-wrap items-center gap-3 bg-surfaceLight/10 p-2 rounded-xl border border-surfaceLight">
-                                    <div className="flex items-center gap-2 bg-surface text-white text-sm rounded-lg px-3 py-2 border border-surfaceLight focus-within:border-primary transition-colors">
-                                        <span className="text-textMuted font-medium">Filter:</span>
+
+                                <div className="flex items-center bg-surface rounded-lg border border-surfaceLight focus-within:border-primary transition-colors overflow-hidden">
+                                    <div className="flex items-center gap-2 text-white text-sm px-3 py-2">
+                                        <span className="text-textMuted font-medium">Sort by:</span>
                                         <select 
-                                            value={historyFilterStatus} 
-                                            onChange={(e) => setHistoryFilterStatus(e.target.value)}
+                                            value={historySortBy} 
+                                            onChange={(e) => setHistorySortBy(e.target.value)}
                                             className="bg-transparent focus:outline-none cursor-pointer"
                                         >
-                                            <option value="inProgress" className="bg-surface text-white">In Progress</option>
-                                            <option value="upToDate" className="bg-surface text-white">Up to Date</option>
-                                            <option value="completed" className="bg-surface text-white">Completed</option>
-                                            <option value="toStart" className="bg-surface text-white">Watchlist</option>
-                                            <option value="all" className="bg-surface text-white">All Shows</option>
+                                            <option value="recent" className="bg-surface text-white">Last Watched</option>
+                                            <option value="added_at" className="bg-surface text-white">Date Added</option>
+                                            <option value="name" className="bg-surface text-white">Name</option>
+                                            <option value="rating" className="bg-surface text-white">Rating</option>
+                                            <option value="progress" className="bg-surface text-white">Progress</option>
+                                            <option value="year" className="bg-surface text-white">Year</option>
                                         </select>
                                     </div>
-
-                                    <div className="flex items-center bg-surface rounded-lg border border-surfaceLight focus-within:border-primary transition-colors overflow-hidden">
-                                        <div className="flex items-center gap-2 text-white text-sm px-3 py-2">
-                                            <span className="text-textMuted font-medium">Sort by:</span>
-                                            <select 
-                                                value={historySortBy} 
-                                                onChange={(e) => setHistorySortBy(e.target.value)}
-                                                className="bg-transparent focus:outline-none cursor-pointer"
-                                            >
-                                                <option value="recent" className="bg-surface text-white">Last Watched</option>
-                                                <option value="added_at" className="bg-surface text-white">Date Added</option>
-                                                <option value="name" className="bg-surface text-white">Name</option>
-                                                <option value="rating" className="bg-surface text-white">Rating</option>
-                                                <option value="progress" className="bg-surface text-white">Progress</option>
-                                                <option value="year" className="bg-surface text-white">Year</option>
-                                            </select>
-                                        </div>
-                                        <button 
-                                            onClick={() => setHistorySortDirection(prev => prev === 'desc' ? 'asc' : 'desc')}
-                                            className="px-3 py-2 text-textMuted hover:text-white hover:bg-surfaceLight/50 transition-colors border-l border-surfaceLight"
-                                            title={historySortDirection === 'desc' ? "Descending" : "Ascending"}
-                                        >
-                                            <i className={`fas fa-sort-amount-${historySortDirection === 'desc' ? 'down' : 'up'}`}></i>
-                                        </button>
-                                    </div>
-
-                                    <div className="flex bg-surface rounded-lg border border-surfaceLight overflow-hidden">
-                                        <button 
-                                            onClick={() => setHistoryViewMode('list')} 
-                                            className={`px-3 py-2 transition-colors ${historyViewMode === 'list' ? 'bg-primary text-white' : 'text-textMuted hover:text-white hover:bg-surfaceLight/50'}`}
-                                            title="List View"
-                                        >
-                                            <i className="fas fa-list"></i>
-                                        </button>
-                                        <button 
-                                            onClick={() => setHistoryViewMode('grid')} 
-                                            className={`px-3 py-2 transition-colors ${historyViewMode === 'grid' ? 'bg-primary text-white' : 'text-textMuted hover:text-white hover:bg-surfaceLight/50'}`}
-                                            title="Grid View"
-                                        >
-                                            <i className="fas fa-th-large"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                                {filteredAndSortedHistory.length > 0 ? (
-                                    historyViewMode === 'list' ? (
-                                        <div className="flex flex-col gap-3 mb-10">
-                                            {filteredAndSortedHistory.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status={show.status} />)}
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
-                                            {filteredAndSortedHistory.map(show => (
-                                                <MediaCard 
-                                                    key={show.id} 
-                                                    item={show} 
-                                                    openModal={openShowModal} 
-                                                    isSaved={true}
-                                                    additionalUI={
-                                                        <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-                                                            {show.status === 'completed' && <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-green-400/50">COMPLETED</span>}
-                                                            {show.status === 'upToDate' && <span className="bg-purple-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-purple-400/50">UP TO DATE</span>}
-                                                            {show.status === 'toStart' && <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-blue-400/50">WATCHLIST</span>}
-                                                            {show.status === 'inProgress' && <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-red-400/50">{Math.round(show.progressPercentage)}%</span>}
-                                                            {show.rating > 0 && <span className="bg-black/80 text-yellow-500 text-[10px] font-bold px-2 py-1 rounded shadow-md border border-yellow-500/50"><i className="fas fa-star"></i> {show.rating}</span>}
-                                                        </div>
-                                                    }
-                                                />
-                                            ))}
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="text-center p-10 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted flex flex-col items-center">
-                                        <i className="fas fa-filter text-5xl mb-4 opacity-30"></i>
-                                        <p>No shows found for the selected filters.</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === 'profile' && (
-                            <div className="p-4 md:p-8 animate-fade-in pb-24">
-                                <h2 className="text-3xl font-bold mb-2">Profile</h2>
-                                <p className="text-textMuted mb-8">Your Otaku statistics and settings.</p>
-                                
-                                {isCalculatingStats ? (
-                                    <div className="flex flex-col items-center justify-center p-8 border border-surfaceLight rounded-xl mb-8">
-                                        <i className="fas fa-satellite-dish fa-spin text-primary text-3xl mb-3"></i>
-                                        <p className="text-textMuted text-sm">Calculating watch time...</p>
-                                    </div>
-                                ) : (
-                                    <div className="mb-8 bg-surfaceLight/10 border border-surfaceLight rounded-xl p-6">
-                                        <div className="grid grid-cols-3 gap-4 text-center">
-                                            <div>
-                                                <div className="text-3xl md:text-5xl font-extrabold text-primary mb-1 drop-shadow-[0_0_10px_rgba(229,9,20,0.4)]">{stats.months}</div>
-                                                <div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Months</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.days}</div>
-                                                <div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Days</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.hours}</div>
-                                                <div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Hours</div>
-                                            </div>
-                                        </div>
-                                        
-                                        {stats.topShows.length > 0 && (
-                                            <div className="mt-8 pt-6 border-t border-surfaceLight/50">
-                                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4">
-                                                    <i className="fas fa-trophy text-yellow-500 mr-2"></i> Most Watched Shows
-                                                </h4>
-                                                <div className="space-y-4">
-                                                    {stats.topShows.map((show, i) => {
-                                                        const maxTime = stats.topShows[0].time > 0 ? stats.topShows[0].time : 1;
-                                                        const percentage = (show.time / maxTime) * 100;
-                                                        return (
-                                                            <div key={i} className="group">
-                                                                <div className="flex justify-between text-xs md:text-sm text-gray-300 mb-1">
-                                                                    <span className="font-semibold truncate pr-4">{show.name}</span>
-                                                                    <span className="flex-shrink-0 text-textMuted">{Math.floor(show.time / 60)}h {show.time % 60}m</span>
-                                                                </div>
-                                                                <div className="h-1.5 w-full bg-black rounded-full overflow-hidden">
-                                                                    <div 
-                                                                        className={`h-full rounded-full transition-all duration-1000 ${i === 0 ? 'bg-primary' : 'bg-surfaceLight group-hover:bg-primary/50'}`} 
-                                                                        style={{ width: `${percentage}%` }}
-                                                                    ></div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                <div className="mt-8 mb-10">
-                                    <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-cog mr-2 text-primary"></i> Settings</h4>
-                                    <div className="bg-surfaceLight/10 border border-surfaceLight rounded-xl p-4 flex justify-between items-center hover:bg-surfaceLight/20 transition-colors">
-                                        <div>
-                                            <h4 className="text-white font-bold text-sm md:text-base">Default Modal View</h4>
-                                            <p className="text-xs text-textMuted mt-1">Open shows in fullscreen mode by default</p>
-                                        </div>
-                                        <button onClick={toggleDefaultFS} className={`w-12 h-6 md:w-14 md:h-7 rounded-full relative transition-colors shadow-inner ${modalDefaultFS ? 'bg-primary' : 'bg-surfaceLight'}`}>
-                                            <div className={`absolute top-1 left-1 w-4 h-4 md:w-5 md:h-5 rounded-full bg-white transition-transform ${modalDefaultFS ? 'translate-x-6 md:translate-x-7' : 'translate-x-0'}`}></div>
-                                        </button>
-                                    </div>
+                                    <button 
+                                        onClick={() => setHistorySortDirection(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                        className="px-3 py-2 text-textMuted hover:text-white hover:bg-surfaceLight/50 transition-colors border-l border-surfaceLight"
+                                        title={historySortDirection === 'desc' ? "Descending" : "Ascending"}
+                                    >
+                                        <i className={`fas fa-sort-amount-${historySortDirection === 'desc' ? 'down' : 'up'}`}></i>
+                                    </button>
                                 </div>
 
-                                <div className="mt-8 mb-10">
-                                    <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-file-import mr-2 text-primary"></i> Import from TV Time</h4>
-                                    <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors relative bg-surfaceLight/10 ${isImporting ? 'border-primary opacity-80' : 'border-surfaceLight hover:border-primary cursor-pointer group'}`}>
-                                        <input type="file" accept=".zip" onChange={handleZipImport} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isImporting} />
-                                        {isImporting ? (
-                                            <div className="flex flex-col items-center justify-center">
-                                                <i className="fas fa-spinner fa-spin text-3xl mb-3 text-primary"></i>
-                                                <p className="text-white font-medium mt-2">{importStatus}</p>
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center pointer-events-none">
-                                                <i className="fas fa-file-archive text-4xl mb-3 text-textMuted group-hover:text-primary transition-colors"></i>
-                                                <h3 className="font-bold text-lg text-white mb-1">Upload .zip archive</h3>
-                                                <p className="text-textMuted text-sm">Drag or click to upload your exported data</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="mt-12 mb-10 border-t border-surfaceLight pt-8">
-                                    <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-transparent border border-red-600/50 text-red-500 hover:bg-red-600 hover:text-white font-bold py-3 px-4 rounded-xl transition-all">
-                                        <i className="fas fa-sign-out-alt"></i> Logout Account
+                                <div className="flex bg-surface rounded-lg border border-surfaceLight overflow-hidden">
+                                    <button 
+                                        onClick={() => setHistoryViewMode('list')} 
+                                        className={`px-3 py-2 transition-colors ${historyViewMode === 'list' ? 'bg-primary text-white' : 'text-textMuted hover:text-white hover:bg-surfaceLight/50'}`}
+                                        title="List View"
+                                    >
+                                        <i className="fas fa-list"></i>
+                                    </button>
+                                    <button 
+                                        onClick={() => setHistoryViewMode('grid')} 
+                                        className={`px-3 py-2 transition-colors ${historyViewMode === 'grid' ? 'bg-primary text-white' : 'text-textMuted hover:text-white hover:bg-surfaceLight/50'}`}
+                                        title="Grid View"
+                                    >
+                                        <i className="fas fa-th-large"></i>
                                     </button>
                                 </div>
                             </div>
-                        )}
-                    </div>
-                </main>
-
-                {/* --- TV SHOW MODAL --- */}
-                {selectedShow && (
-                    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
-                        <div className="absolute inset-0" onClick={closeModal}></div>
-                        <div className={`bg-surface flex flex-col overflow-hidden relative shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-surfaceLight z-10 animate-fade-in transition-all duration-300 ${isFullscreen ? 'w-full h-full max-w-none rounded-none' : 'w-full max-w-4xl max-h-[90vh] md:h-[85vh] md:rounded-2xl rounded-t-3xl'}`}>
-                            
-                            <div className="absolute top-4 right-4 z-20 flex gap-2 md:gap-3">
-                                <button 
-                                    onClick={toggleFullscreen} 
-                                    className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 hidden md:flex" 
-                                    title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                                >
-                                    <i className={`fas fa-${isFullscreen ? 'compress' : 'expand'}`}></i>
-                                </button>
-                                <button 
-                                    onClick={() => toggleLibraryShow(selectedShow)} 
-                                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all backdrop-blur-md border ${isShowSaved(selectedShow.id) ? 'bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.5)]' : 'bg-black/60 text-white hover:bg-surface border-white/10'}`} 
-                                    title={isShowSaved(selectedShow.id) ? "Remove from Library (Wipes History)" : "Add to Library (Watchlist)"}
-                                >
-                                    <i className={`${isShowSaved(selectedShow.id) ? 'fas' : 'far'} fa-bookmark`}></i>
-                                </button>
-                                <button 
-                                    onClick={closeModal} 
-                                    className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10"
-                                >
-                                    <i className="fas fa-times"></i>
-                                </button>
-                            </div>
-
-                            <div className="relative h-56 md:h-80 flex-shrink-0 bg-surfaceLight">
-                                {selectedShow.backdrop_path ? (
-                                    <img src={`${TMDB_BACKDROP_URL}${selectedShow.backdrop_path}`} className="w-full h-full object-cover" alt="Backdrop" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center opacity-20">
-                                        <i className="fas fa-image text-6xl"></i>
-                                    </div>
-                                )}
-                                <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
-                                <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full flex items-end gap-6">
-                                    <div className="hidden md:block flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 border-surfaceLight/50 shadow-2xl">
-                                         {selectedShow.poster_path ? <img src={`${TMDB_IMG_URL}${selectedShow.poster_path}`} className="w-full" alt="Poster" /> : null}
-                                    </div>
-                                    <div className="flex-1">
-                                        <h2 className="text-3xl md:text-5xl font-extrabold text-white mb-2 shadow-black drop-shadow-xl tracking-tight">{selectedShow.name}</h2>
-                                        <div className="flex items-center gap-4 text-sm text-gray-300 font-medium bg-black/40 w-max px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
-                                            <span className="flex items-center"><i className="fas fa-star text-yellow-500 mr-1.5"></i> {selectedShow.vote_average?.toFixed(1)}/10</span>
-                                            {selectedShow.first_air_date && <span>• {selectedShow.first_air_date.substring(0,4)}</span>}
-                                            <span className="uppercase text-primary font-bold">{selectedShow.original_language}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-6 md:p-8">
-                                <div className="mb-8">
-                                    <h3 className="text-lg font-bold text-white mb-3">Synopsis</h3>
-                                    <p className="text-gray-300 leading-relaxed text-sm md:text-base">{showDetails?.overview || selectedShow.overview || "No synopsis available for this show."}</p>
-                                </div>
-
-                                {isShowSaved(selectedShow.id) && (
-                                    <div className="mb-8 bg-surfaceLight/20 p-4 rounded-xl border border-surfaceLight flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in">
-                                        <div className="flex items-center gap-2 text-white font-bold"><i className="fas fa-star text-yellow-500"></i> Your Rating</div>
-                                        <div className="flex gap-2">
-                                            {[1, 2, 3, 4, 5].map(star => {
-                                                const currentRating = savedShowsData.find(s => s.id === selectedShow.id)?.rating || 0;
-                                                return (
-                                                    <button 
-                                                        key={star} 
-                                                        onClick={() => rateShow(selectedShow.id, star)} 
-                                                        className={`text-2xl transition-transform hover:scale-110 ${star <= currentRating ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]' : 'text-surfaceLight hover:text-yellow-500/50'}`}
-                                                    >
-                                                        <i className="fas fa-star"></i>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                                    <i className="fas fa-layer-group text-primary"></i> Seasons & Episodes
-                                </h3>
-                                
-                                {isLoadingDetails ? (
-                                    <div className="flex justify-center p-8">
-                                        <i className="fas fa-spinner fa-spin text-primary text-3xl"></i>
-                                    </div>
-                                ) : showDetails && showDetails.seasons ? (
-                                    <div className="space-y-3 pb-8">
-                                        {showDetails.seasons.filter(s => s.season_number > 0).map(season => {
-                                            const watchedInSeason = watchedEpisodesData.filter(ep => ep.show_id === showDetails.id && ep.season_number === season.season_number);
-                                            const isFullyWatched = watchedInSeason.length >= season.episode_count && season.episode_count > 0;
-                                            const isExpanded = expandedSeason === season.season_number;
-
-                                            return (
-                                                <div key={season.id} className="bg-surfaceLight/20 rounded-xl border border-surfaceLight overflow-hidden transition-all">
-                                                    <div className="w-full flex items-center justify-between p-3 md:p-4 hover:bg-surfaceLight/40 transition-colors cursor-pointer" onClick={() => toggleSeason(showDetails.id, season.season_number)}>
-                                                        <div className="flex items-center gap-4">
-                                                            {season.poster_path ? (
-                                                                <img src={`${TMDB_IMG_URL}${season.poster_path}`} className="w-12 h-16 object-cover rounded shadow-md" alt={season.name} />
-                                                            ) : (
-                                                                <div className="w-12 h-16 bg-surfaceLight/50 flex flex-col items-center justify-center rounded">
-                                                                    <i className="fas fa-tv text-xl text-surfaceLight mb-1"></i>
-                                                                </div>
-                                                            )}
-                                                            <div className="text-left">
-                                                                <div className="font-bold text-white text-lg">{season.name}</div>
-                                                                <div className="text-sm text-textMuted">
-                                                                    {watchedInSeason.length} / {season.episode_count} Episodes {season.air_date ? `• ${season.air_date.substring(0,4)}` : ''}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <button 
-                                                                onClick={(e) => { 
-                                                                    e.stopPropagation(); 
-                                                                    toggleSeasonWatched(showDetails.id, season.season_number, season.episode_count); 
-                                                                }} 
-                                                                className={`w-10 h-10 rounded-full transition-colors flex items-center justify-center z-10 ${isFullyWatched ? 'bg-primary text-white shadow-[0_0_10px_rgba(229,9,20,0.5)]' : 'bg-surfaceLight/50 text-textMuted hover:bg-primary hover:text-white'}`} 
-                                                                title={isFullyWatched ? "Mark season as unwatched" : "Mark entire season as watched"}
-                                                            >
-                                                                <i className="fas fa-check-double"></i>
-                                                            </button>
-                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isExpanded ? 'bg-primary/20 text-primary' : 'bg-surfaceLight/50 text-textMuted'}`}>
-                                                                <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} transition-transform`}></i>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {isExpanded && (
-                                                        <div className="bg-black/30 p-2 md:p-4 border-t border-surfaceLight max-h-96 overflow-y-auto">
-                                                            {!seasonEpisodes[season.season_number] ? (
-                                                                <div className="text-center p-6"><i className="fas fa-spinner fa-spin text-textMuted text-xl"></i></div>
-                                                            ) : (
-                                                                <div className="space-y-1">
-                                                                    {seasonEpisodes[season.season_number].map(ep => {
-                                                                        const isWatched = !!getWatchedEpisodeData(showDetails.id, ep.season_number, ep.episode_number);
-                                                                        return (
-                                                                            <div key={ep.id} className="flex gap-4 items-center p-3 hover:bg-surfaceLight/40 rounded-lg group transition-colors">
-                                                                                <div className={`w-8 font-mono text-lg font-bold transition-colors text-right ${isWatched ? 'text-primary' : 'text-surfaceLight group-hover:text-textMuted'}`}>
-                                                                                    {ep.episode_number}
-                                                                                </div>
-                                                                                <div className="flex-1 min-w-0">
-                                                                                    <div className={`text-sm md:text-base font-semibold truncate ${isWatched ? 'text-white' : 'text-gray-400 group-hover:text-gray-200'}`}>
-                                                                                        {ep.name}
-                                                                                    </div>
-                                                                                    <div className="text-xs text-textMuted flex items-center gap-2 mt-0.5">
-                                                                                        <span><i className="far fa-calendar-alt"></i> {ep.air_date ? ep.air_date.split('-').reverse().join('/') : 'TBA'}</span>
-                                                                                        {ep.runtime > 0 && <span><i className="far fa-clock"></i> {ep.runtime} min</span>}
-                                                                                    </div>
-                                                                                </div>
-                                                                                <button 
-                                                                                    onClick={() => toggleWatchedEpisode(ep, showDetails.id)} 
-                                                                                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${isWatched ? 'bg-primary/20 text-primary border-primary shadow-[0_0_10px_rgba(229,9,20,0.3)]' : 'bg-surfaceLight/30 text-textMuted border-transparent hover:border-textMuted hover:text-white'}`} 
-                                                                                    title={isWatched ? "Remove from watched" : "Mark as watched"}
-                                                                                >
-                                                                                    <i className="fas fa-eye"></i>
-                                                                                </button>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <p className="text-textMuted">No additional details found.</p>
-                                )}
-                            </div>
                         </div>
-                    </div>
-                )}
 
-                {/* --- MOVIE MODAL --- */}
-                {selectedMovie && (
-                    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
-                        <div className="absolute inset-0" onClick={closeModal}></div>
-                        <div className={`bg-surface flex flex-col overflow-hidden relative shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-surfaceLight z-10 animate-fade-in transition-all duration-300 ${isFullscreen ? 'w-full h-full max-w-none rounded-none' : 'w-full max-w-2xl max-h-[90vh] md:h-auto md:rounded-2xl rounded-t-3xl'}`}>
-                            
-                            <div className="absolute top-4 right-4 z-20 flex gap-2 md:gap-3">
-                                <button 
-                                    onClick={toggleFullscreen} 
-                                    className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 hidden md:flex" 
-                                    title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                                >
-                                    <i className={`fas fa-${isFullscreen ? 'compress' : 'expand'}`}></i>
-                                </button>
-                                <button 
-                                    onClick={closeModal} 
-                                    className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10"
-                                >
-                                    <i className="fas fa-times"></i>
-                                </button>
-                            </div>
-
-                            <div className="relative h-56 md:h-80 flex-shrink-0 bg-surfaceLight">
-                                {selectedMovie.backdrop_path ? (
-                                    <img src={`${TMDB_BACKDROP_URL}${selectedMovie.backdrop_path}`} className="w-full h-full object-cover" alt="Backdrop" />
+                            {filteredAndSortedHistory.length > 0 ? (
+                                historyViewMode === 'list' ? (
+                                    <div className="flex flex-col gap-3 mb-10">
+                                        {filteredAndSortedHistory.map(show => <ShowListRow key={show.id} show={show} openShowModal={openShowModal} status={show.status} />)}
+                                    </div>
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center opacity-20">
-                                        <i className="fas fa-film text-6xl"></i>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 pb-20">
+                                        {filteredAndSortedHistory.map(show => (
+                                            <MediaCard 
+                                                key={show.id} 
+                                                item={show} 
+                                                openModal={openShowModal} 
+                                                isSaved={true}
+                                                additionalUI={
+                                                    <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+                                                        {show.status === 'completed' && <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-green-400/50">COMPLETED</span>}
+                                                        {show.status === 'upToDate' && <span className="bg-purple-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-purple-400/50">UP TO DATE</span>}
+                                                        {show.status === 'toStart' && <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-blue-400/50">WATCHLIST</span>}
+                                                        {show.status === 'inProgress' && <span className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded shadow-md border border-red-400/50">{Math.round(show.progressPercentage)}%</span>}
+                                                        {show.rating > 0 && <span className="bg-black/80 text-yellow-500 text-[10px] font-bold px-2 py-1 rounded shadow-md border border-yellow-500/50"><i className="fas fa-star"></i> {show.rating}</span>}
+                                                    </div>
+                                                }
+                                            />
+                                        ))}
                                     </div>
-                                )}
-                                <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
-                                <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full flex items-end gap-6">
-                                    <div className="hidden md:block flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 border-surfaceLight/50 shadow-2xl">
-                                         {selectedMovie.poster_path ? <img src={`${TMDB_IMG_URL}${selectedMovie.poster_path}`} className="w-full" alt="Poster" /> : null}
-                                    </div>
-                                    <div className="flex-1">
-                                        <h2 className="text-3xl md:text-5xl font-extrabold text-white mb-2 shadow-black drop-shadow-xl tracking-tight">{selectedMovie.title}</h2>
-                                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-300 font-medium bg-black/40 w-max max-w-full px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
-                                            <span className="flex items-center shrink-0"><i className="fas fa-star text-yellow-500 mr-1.5"></i> {selectedMovie.vote_average?.toFixed(1)}/10</span>
-                                            {selectedMovie.release_date && <span className="shrink-0">• {selectedMovie.release_date.substring(0,4)}</span>}
-                                            {movieDetails?.runtime > 0 && <span className="shrink-0">• {movieDetails.runtime} min</span>}
+                                )
+                            ) : (
+                                <div className="text-center p-10 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted flex flex-col items-center">
+                                    <i className="fas fa-filter text-5xl mb-4 opacity-30"></i>
+                                    <p>No shows found for the selected filters.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'profile' && (
+                        <div className="p-4 md:p-8 animate-fade-in pb-24">
+                            <h2 className="text-3xl font-bold mb-2">Profile</h2>
+                            <p className="text-textMuted mb-8">Your Otaku statistics and settings.</p>
+                            
+                            {isCalculatingStats ? (
+                                <div className="flex flex-col items-center justify-center p-8 border border-surfaceLight rounded-xl mb-8">
+                                    <i className="fas fa-satellite-dish fa-spin text-primary text-3xl mb-3"></i>
+                                    <p className="text-textMuted text-sm">Calculating watch time...</p>
+                                </div>
+                            ) : (
+                                <div className="mb-8 bg-surfaceLight/10 border border-surfaceLight rounded-xl p-6">
+                                    <div className="grid grid-cols-3 gap-4 text-center">
+                                        <div>
+                                            <div className="text-3xl md:text-5xl font-extrabold text-primary mb-1 drop-shadow-[0_0_10px_rgba(229,9,20,0.4)]">{stats.months}</div>
+                                            <div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Months</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.days}</div>
+                                            <div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Days</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-3xl md:text-5xl font-extrabold text-white mb-1">{stats.hours}</div>
+                                            <div className="text-xs md:text-sm text-textMuted uppercase tracking-wider font-semibold">Hours</div>
                                         </div>
                                     </div>
+                                    
+                                    {stats.topShows.length > 0 && (
+                                        <div className="mt-8 pt-6 border-t border-surfaceLight/50">
+                                            <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4">
+                                                <i className="fas fa-trophy text-yellow-500 mr-2"></i> Most Watched Shows
+                                            </h4>
+                                            <div className="space-y-4">
+                                                {stats.topShows.map((show, i) => {
+                                                    const maxTime = stats.topShows[0].time > 0 ? stats.topShows[0].time : 1;
+                                                    const percentage = (show.time / maxTime) * 100;
+                                                    return (
+                                                        <div key={i} className="group">
+                                                            <div className="flex justify-between text-xs md:text-sm text-gray-300 mb-1">
+                                                                <span className="font-semibold truncate pr-4">{show.name}</span>
+                                                                <span className="flex-shrink-0 text-textMuted">{Math.floor(show.time / 60)}h {show.time % 60}m</span>
+                                                            </div>
+                                                            <div className="h-1.5 w-full bg-black rounded-full overflow-hidden">
+                                                                <div 
+                                                                    className={`h-full rounded-full transition-all duration-1000 ${i === 0 ? 'bg-primary' : 'bg-surfaceLight group-hover:bg-primary/50'}`} 
+                                                                    style={{ width: `${percentage}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="mt-8 mb-10">
+                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-cog mr-2 text-primary"></i> Settings</h4>
+                                <div className="bg-surfaceLight/10 border border-surfaceLight rounded-xl p-4 flex justify-between items-center hover:bg-surfaceLight/20 transition-colors">
+                                    <div>
+                                        <h4 className="text-white font-bold text-sm md:text-base">Default Modal View</h4>
+                                        <p className="text-xs text-textMuted mt-1">Open shows in fullscreen mode by default</p>
+                                    </div>
+                                    <button onClick={toggleDefaultFS} className={`w-12 h-6 md:w-14 md:h-7 rounded-full relative transition-colors shadow-inner ${modalDefaultFS ? 'bg-primary' : 'bg-surfaceLight'}`}>
+                                        <div className={`absolute top-1 left-1 w-4 h-4 md:w-5 md:h-5 rounded-full bg-white transition-transform ${modalDefaultFS ? 'translate-x-6 md:translate-x-7' : 'translate-x-0'}`}></div>
+                                    </button>
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 md:p-8">
-                                <div className="mb-8">
-                                    <h3 className="text-lg font-bold text-white mb-3">Synopsis</h3>
-                                    <p className="text-gray-300 leading-relaxed text-sm md:text-base">{movieDetails?.overview || selectedMovie.overview || "No synopsis available for this movie."}</p>
-                                </div>
-
-                                {isMovieSaved(selectedMovie.id) && savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'watched' && (
-                                    <div className="mb-8 bg-surfaceLight/20 p-4 rounded-xl border border-surfaceLight flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in">
-                                        <div className="flex items-center gap-2 text-white font-bold"><i className="fas fa-star text-yellow-500"></i> Your Rating</div>
-                                        <div className="flex gap-2">
-                                            {[1, 2, 3, 4, 5].map(star => {
-                                                const currentRating = savedMoviesData.find(m => m.id === selectedMovie.id)?.rating || 0;
-                                                return (
-                                                    <button 
-                                                        key={star} 
-                                                        onClick={() => rateMovie(selectedMovie.id, star)} 
-                                                        className={`text-2xl transition-transform hover:scale-110 ${star <= currentRating ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]' : 'text-surfaceLight hover:text-yellow-500/50'}`}
-                                                    >
-                                                        <i className="fas fa-star"></i>
-                                                    </button>
-                                                );
-                                            })}
+                            <div className="mt-8 mb-10">
+                                <h4 className="text-sm text-textMuted uppercase tracking-wider font-bold mb-4"><i className="fas fa-file-import mr-2 text-primary"></i> Import from TV Time</h4>
+                                <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors relative bg-surfaceLight/10 ${isImporting ? 'border-primary opacity-80' : 'border-surfaceLight hover:border-primary cursor-pointer group'}`}>
+                                    <input type="file" accept=".zip" onChange={handleZipImport} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isImporting} />
+                                    {isImporting ? (
+                                        <div className="flex flex-col items-center justify-center">
+                                            <i className="fas fa-spinner fa-spin text-3xl mb-3 text-primary"></i>
+                                            <p className="text-white font-medium mt-2">{importStatus}</p>
                                         </div>
-                                    </div>
-                                )}
-
-                                <div className="flex flex-col sm:flex-row gap-4 mt-8 border-t border-surfaceLight pt-8">
-                                    {isMovieSaved(selectedMovie.id) ? (
-                                        <>
-                                            <div className="flex-1 bg-surfaceLight/20 border border-surfaceLight rounded-xl p-4 flex items-center justify-between">
-                                                <span className="text-textMuted font-bold text-sm">Status</span>
-                                                <div className="flex gap-2">
-                                                    <button 
-                                                        onClick={() => setMovieStatus(selectedMovie, 'toWatch')}
-                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'toWatch' ? 'bg-blue-500 text-white' : 'bg-surface border border-surfaceLight text-textMuted hover:text-white'}`}
-                                                    >
-                                                        TO WATCH
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => setMovieStatus(selectedMovie, 'watched')}
-                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'watched' ? 'bg-green-500 text-white' : 'bg-surface border border-surfaceLight text-textMuted hover:text-white'}`}
-                                                    >
-                                                        WATCHED
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <button 
-                                                onClick={() => removeMovie(selectedMovie.id)}
-                                                className="shrink-0 flex items-center justify-center bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-6 py-4 rounded-xl transition-colors font-bold"
-                                            >
-                                                <i className="fas fa-trash-alt mr-2"></i> Remove
-                                            </button>
-                                        </>
                                     ) : (
-                                        <>
-                                            <button 
-                                                onClick={() => setMovieStatus(selectedMovie, 'toWatch')}
-                                                className="flex-1 flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-4 rounded-xl transition-colors font-bold shadow-lg shadow-blue-500/20"
-                                            >
-                                                <i className="fas fa-bookmark"></i> Add to "To Watch"
-                                            </button>
-                                            <button 
-                                                onClick={() => setMovieStatus(selectedMovie, 'watched')}
-                                                className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-6 py-4 rounded-xl transition-colors font-bold shadow-lg shadow-green-500/20"
-                                            >
-                                                <i className="fas fa-check-circle"></i> Mark as Watched
-                                            </button>
-                                        </>
+                                        <div className="flex flex-col items-center justify-center pointer-events-none">
+                                            <i className="fas fa-file-archive text-4xl mb-3 text-textMuted group-hover:text-primary transition-colors"></i>
+                                            <h3 className="font-bold text-lg text-white mb-1">Upload .zip archive</h3>
+                                            <p className="text-textMuted text-sm">Drag or click to upload your exported data</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
+
+                            <div className="mt-12 mb-10 border-t border-surfaceLight pt-8">
+                                <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-transparent border border-red-600/50 text-red-500 hover:bg-red-600 hover:text-white font-bold py-3 px-4 rounded-xl transition-all">
+                                    <i className="fas fa-sign-out-alt"></i> Logout Account
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </main>
+
+            {/* --- TV SHOW MODAL --- */}
+            {selectedShow && (
+                <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
+                    <div className="absolute inset-0" onClick={closeModal}></div>
+                    <div className={`bg-surface flex flex-col overflow-hidden relative shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-surfaceLight z-10 animate-fade-in transition-all duration-300 ${isFullscreen ? 'w-full h-full max-w-none rounded-none' : 'w-full max-w-4xl max-h-[90vh] md:h-[85vh] md:rounded-2xl rounded-t-3xl'}`}>
+                        
+                        <div className="absolute top-4 right-4 z-20 flex gap-2 md:gap-3">
+                            <button 
+                                onClick={toggleFullscreen} 
+                                className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 hidden md:flex" 
+                                title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                            >
+                                <i className={`fas fa-${isFullscreen ? 'compress' : 'expand'}`}></i>
+                            </button>
+                            <button 
+                                onClick={() => toggleLibraryShow(selectedShow)} 
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all backdrop-blur-md border ${isShowSaved(selectedShow.id) ? 'bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.5)]' : 'bg-black/60 text-white hover:bg-surface border-white/10'}`} 
+                                title={isShowSaved(selectedShow.id) ? "Remove from Library (Wipes History)" : "Add to Library (Watchlist)"}
+                            >
+                                <i className={`${isShowSaved(selectedShow.id) ? 'fas' : 'far'} fa-bookmark`}></i>
+                            </button>
+                            <button 
+                                onClick={closeModal} 
+                                className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10"
+                            >
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+
+                        <div className="relative h-56 md:h-80 flex-shrink-0 bg-surfaceLight">
+                            {selectedShow.backdrop_path ? (
+                                <img src={`${TMDB_BACKDROP_URL}${selectedShow.backdrop_path}`} className="w-full h-full object-cover" alt="Backdrop" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center opacity-20">
+                                    <i className="fas fa-image text-6xl"></i>
+                                </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
+                            <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full flex items-end gap-6">
+                                <div className="hidden md:block flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 border-surfaceLight/50 shadow-2xl">
+                                     {selectedShow.poster_path ? <img src={`${TMDB_IMG_URL}${selectedShow.poster_path}`} className="w-full" alt="Poster" /> : null}
+                                </div>
+                                <div className="flex-1">
+                                    <h2 className="text-3xl md:text-5xl font-extrabold text-white mb-2 shadow-black drop-shadow-xl tracking-tight">{selectedShow.name}</h2>
+                                    <div className="flex items-center gap-4 text-sm text-gray-300 font-medium bg-black/40 w-max px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
+                                        {selectedShow.vote_average != null && (
+                                            <span className="flex items-center"><i className="fas fa-star text-yellow-500 mr-1.5"></i> {formatRating(selectedShow.vote_average)}/10</span>
+                                        )}
+                                        {selectedShow.first_air_date && typeof selectedShow.first_air_date === 'string' && <span>• {getYear(selectedShow.first_air_date)}</span>}
+                                        <span className="uppercase text-primary font-bold">{selectedShow.original_language}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+                            <div className="mb-8">
+                                <h3 className="text-lg font-bold text-white mb-3">Synopsis</h3>
+                                <p className="text-gray-300 leading-relaxed text-sm md:text-base">{showDetails?.overview || selectedShow.overview || "No synopsis available for this show."}</p>
+                            </div>
+
+                            {isShowSaved(selectedShow.id) && (
+                                <div className="mb-8 bg-surfaceLight/20 p-4 rounded-xl border border-surfaceLight flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in">
+                                    <div className="flex items-center gap-2 text-white font-bold"><i className="fas fa-star text-yellow-500"></i> Your Rating</div>
+                                    <div className="flex gap-2">
+                                        {[1, 2, 3, 4, 5].map(star => {
+                                            const currentRating = savedShowsData.find(s => s.id === selectedShow.id)?.rating || 0;
+                                            return (
+                                                <button 
+                                                    key={star} 
+                                                    onClick={() => rateShow(selectedShow.id, star)} 
+                                                    className={`text-2xl transition-transform hover:scale-110 ${star <= currentRating ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]' : 'text-surfaceLight hover:text-yellow-500/50'}`}
+                                                >
+                                                    <i className="fas fa-star"></i>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                                <i className="fas fa-layer-group text-primary"></i> Seasons & Episodes
+                            </h3>
+                            
+                            {isLoadingDetails ? (
+                                <div className="flex justify-center p-8">
+                                    <i className="fas fa-spinner fa-spin text-primary text-3xl"></i>
+                                </div>
+                            ) : showDetails && showDetails.seasons ? (
+                                <div className="space-y-3 pb-8">
+                                    {showDetails.seasons.filter(s => s.season_number > 0).map(season => {
+                                        const watchedInSeason = watchedEpisodesData.filter(ep => ep.show_id === showDetails.id && ep.season_number === season.season_number);
+                                        const isFullyWatched = watchedInSeason.length >= season.episode_count && season.episode_count > 0;
+                                        const isExpanded = expandedSeason === season.season_number;
+
+                                        return (
+                                            <div key={season.id} className="bg-surfaceLight/20 rounded-xl border border-surfaceLight overflow-hidden transition-all">
+                                                <div className="w-full flex items-center justify-between p-3 md:p-4 hover:bg-surfaceLight/40 transition-colors cursor-pointer" onClick={() => toggleSeason(showDetails.id, season.season_number)}>
+                                                    <div className="flex items-center gap-4">
+                                                        {season.poster_path ? (
+                                                            <img src={`${TMDB_IMG_URL}${season.poster_path}`} className="w-12 h-16 object-cover rounded shadow-md" alt={season.name} />
+                                                        ) : (
+                                                            <div className="w-12 h-16 bg-surfaceLight/50 flex flex-col items-center justify-center rounded">
+                                                                <i className="fas fa-tv text-xl text-surfaceLight mb-1"></i>
+                                                            </div>
+                                                        )}
+                                                        <div className="text-left">
+                                                            <div className="font-bold text-white text-lg">{season.name}</div>
+                                                            <div className="text-sm text-textMuted">
+                                                                {watchedInSeason.length} / {season.episode_count} Episodes {season.air_date ? `• ${getYear(season.air_date)}` : ''}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                toggleSeasonWatched(showDetails.id, season.season_number, season.episode_count); 
+                                                            }} 
+                                                            className={`w-10 h-10 rounded-full transition-colors flex items-center justify-center z-10 ${isFullyWatched ? 'bg-primary text-white shadow-[0_0_10px_rgba(229,9,20,0.5)]' : 'bg-surfaceLight/50 text-textMuted hover:bg-primary hover:text-white'}`} 
+                                                            title={isFullyWatched ? "Mark season as unwatched" : "Mark entire season as watched"}
+                                                        >
+                                                            <i className="fas fa-check-double"></i>
+                                                        </button>
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isExpanded ? 'bg-primary/20 text-primary' : 'bg-surfaceLight/50 text-textMuted'}`}>
+                                                            <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} transition-transform`}></i>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {isExpanded && (
+                                                    <div className="bg-black/30 p-2 md:p-4 border-t border-surfaceLight max-h-96 overflow-y-auto">
+                                                        {!seasonEpisodes[season.season_number] ? (
+                                                            <div className="text-center p-6"><i className="fas fa-spinner fa-spin text-textMuted text-xl"></i></div>
+                                                        ) : (
+                                                            <div className="space-y-1">
+                                                                {seasonEpisodes[season.season_number].map(ep => {
+                                                                    const isWatched = !!getWatchedEpisodeData(showDetails.id, ep.season_number, ep.episode_number);
+                                                                    return (
+                                                                        <div key={ep.id} className="flex gap-4 items-center p-3 hover:bg-surfaceLight/40 rounded-lg group transition-colors">
+                                                                            <div className={`w-8 font-mono text-lg font-bold transition-colors text-right ${isWatched ? 'text-primary' : 'text-surfaceLight group-hover:text-textMuted'}`}>
+                                                                                {ep.episode_number}
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className={`text-sm md:text-base font-semibold truncate ${isWatched ? 'text-white' : 'text-gray-400 group-hover:text-gray-200'}`}>
+                                                                                    {ep.name}
+                                                                                </div>
+                                                                                <div className="text-xs text-textMuted flex items-center gap-2 mt-0.5">
+                                                                                    <span><i className="far fa-calendar-alt"></i> {ep.air_date ? ep.air_date.split('-').reverse().join('/') : 'TBA'}</span>
+                                                                                    {ep.runtime > 0 && <span><i className="far fa-clock"></i> {ep.runtime} min</span>}
+                                                                                </div>
+                                                                            </div>
+                                                                            <button 
+                                                                                onClick={() => toggleWatchedEpisode(ep, showDetails.id)} 
+                                                                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${isWatched ? 'bg-primary/20 text-primary border-primary shadow-[0_0_10px_rgba(229,9,20,0.3)]' : 'bg-surfaceLight/30 text-textMuted border-transparent hover:border-textMuted hover:text-white'}`} 
+                                                                                title={isWatched ? "Remove from watched" : "Mark as watched"}
+                                                                            >
+                                                                                <i className="fas fa-eye"></i>
+                                                                            </button>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-textMuted">No additional details found.</p>
+                            )}
                         </div>
                     </div>
-                )}
-            </div>
-        </ErrorBoundary>
+                </div>
+            )}
+
+            {/* --- MOVIE MODAL --- */}
+            {selectedMovie && (
+                <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-modal md:p-6">
+                    <div className="absolute inset-0" onClick={closeModal}></div>
+                    <div className={`bg-surface flex flex-col overflow-hidden relative shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-surfaceLight z-10 animate-fade-in transition-all duration-300 ${isFullscreen ? 'w-full h-full max-w-none rounded-none' : 'w-full max-w-2xl max-h-[90vh] md:h-auto md:rounded-2xl rounded-t-3xl'}`}>
+                        
+                        <div className="absolute top-4 right-4 z-20 flex gap-2 md:gap-3">
+                            <button 
+                                onClick={toggleFullscreen} 
+                                className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10 hidden md:flex" 
+                                title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                            >
+                                <i className={`fas fa-${isFullscreen ? 'compress' : 'expand'}`}></i>
+                            </button>
+                            <button 
+                                onClick={closeModal} 
+                                className="bg-black/60 hover:bg-surface text-white w-10 h-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md border border-white/10"
+                            >
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+
+                        <div className="relative h-56 md:h-80 flex-shrink-0 bg-surfaceLight">
+                            {selectedMovie.backdrop_path ? (
+                                <img src={`${TMDB_BACKDROP_URL}${selectedMovie.backdrop_path}`} className="w-full h-full object-cover" alt="Backdrop" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center opacity-20">
+                                    <i className="fas fa-film text-6xl"></i>
+                                </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/60 to-transparent"></div>
+                            <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full flex items-end gap-6">
+                                <div className="hidden md:block flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 border-surfaceLight/50 shadow-2xl">
+                                     {selectedMovie.poster_path ? <img src={`${TMDB_IMG_URL}${selectedMovie.poster_path}`} className="w-full" alt="Poster" /> : null}
+                                </div>
+                                <div className="flex-1">
+                                    <h2 className="text-3xl md:text-5xl font-extrabold text-white mb-2 shadow-black drop-shadow-xl tracking-tight">{selectedMovie.title || selectedMovie.name || "Unknown Movie"}</h2>
+                                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-300 font-medium bg-black/40 w-max max-w-full px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
+                                        {selectedMovie.vote_average != null && (
+                                            <span className="flex items-center shrink-0"><i className="fas fa-star text-yellow-500 mr-1.5"></i> {formatRating(selectedMovie.vote_average)}/10</span>
+                                        )}
+                                        {selectedMovie.release_date && typeof selectedMovie.release_date === 'string' && <span className="shrink-0">• {getYear(selectedMovie.release_date)}</span>}
+                                        {movieDetails?.runtime > 0 && <span className="shrink-0">• {movieDetails.runtime} min</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+                            <div className="mb-8">
+                                <h3 className="text-lg font-bold text-white mb-3">Synopsis</h3>
+                                <p className="text-gray-300 leading-relaxed text-sm md:text-base">{movieDetails?.overview || selectedMovie.overview || "No synopsis available for this movie."}</p>
+                            </div>
+
+                            {isMovieSaved(selectedMovie.id) && savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'watched' && (
+                                <div className="mb-8 bg-surfaceLight/20 p-4 rounded-xl border border-surfaceLight flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in">
+                                    <div className="flex items-center gap-2 text-white font-bold"><i className="fas fa-star text-yellow-500"></i> Your Rating</div>
+                                    <div className="flex gap-2">
+                                        {[1, 2, 3, 4, 5].map(star => {
+                                            const currentRating = savedMoviesData.find(m => m.id === selectedMovie.id)?.rating || 0;
+                                            return (
+                                                <button 
+                                                    key={star} 
+                                                    onClick={() => rateMovie(selectedMovie.id, star)} 
+                                                    className={`text-2xl transition-transform hover:scale-110 ${star <= currentRating ? 'text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]' : 'text-surfaceLight hover:text-yellow-500/50'}`}
+                                                >
+                                                    <i className="fas fa-star"></i>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row gap-4 mt-8 border-t border-surfaceLight pt-8">
+                                {isMovieSaved(selectedMovie.id) ? (
+                                    <>
+                                        <div className="flex-1 bg-surfaceLight/20 border border-surfaceLight rounded-xl p-4 flex items-center justify-between">
+                                            <span className="text-textMuted font-bold text-sm">Status</span>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => setMovieStatus(selectedMovie, 'toWatch')}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'toWatch' ? 'bg-blue-500 text-white' : 'bg-surface border border-surfaceLight text-textMuted hover:text-white'}`}
+                                                >
+                                                    TO WATCH
+                                                </button>
+                                                <button 
+                                                    onClick={() => setMovieStatus(selectedMovie, 'watched')}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${savedMoviesData.find(m => m.id === selectedMovie.id)?.status === 'watched' ? 'bg-green-500 text-white' : 'bg-surface border border-surfaceLight text-textMuted hover:text-white'}`}
+                                                >
+                                                    WATCHED
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => removeMovie(selectedMovie.id)}
+                                            className="shrink-0 flex items-center justify-center bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-6 py-4 rounded-xl transition-colors font-bold"
+                                        >
+                                            <i className="fas fa-trash-alt mr-2"></i> Remove
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button 
+                                            onClick={() => setMovieStatus(selectedMovie, 'toWatch')}
+                                            className="flex-1 flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-4 rounded-xl transition-colors font-bold shadow-lg shadow-blue-500/20"
+                                        >
+                                            <i className="fas fa-bookmark"></i> Add to "To Watch"
+                                        </button>
+                                        <button 
+                                            onClick={() => setMovieStatus(selectedMovie, 'watched')}
+                                            className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-6 py-4 rounded-xl transition-colors font-bold shadow-lg shadow-green-500/20"
+                                        >
+                                            <i className="fas fa-check-circle"></i> Mark as Watched
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
+
+const App = () => (
+    <ErrorBoundary>
+        <MainApp />
+    </ErrorBoundary>
+);
 
 export default App;

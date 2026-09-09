@@ -10,7 +10,7 @@ export default function HistoryTab({ openShowModal }) {
     const [historyViewMode, setHistoryViewMode] = useState('list');
     const [historySortBy, setHistorySortBy] = useState('recent');
     const [historySortDesc, setHistorySortDesc] = useState(true);
-    const [historyFilterStatus, setHistoryFilterStatus] = useState('inProgress');
+    const [historyFilterStatus, setHistoryFilterStatus] = useState('all');
 
     const filteredAndSortedHistory = [...historyShows]
         .filter(show => {

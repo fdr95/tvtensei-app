@@ -3,21 +3,39 @@ export const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 export const TMDB_IMG_URL = 'https://image.tmdb.org/t/p/w500';
 export const TMDB_BACKDROP_URL = 'https://image.tmdb.org/t/p/w1280';
 
-// In-memory cache with configurable TTL (default 15 minutes)
-const cache = new Map();
+// In-memory + sessionStorage cache with 1 hour TTL to eliminate redundant network traffic on refresh
+const memCache = new Map();
 
-async function fetchWithCache(url, ttlMs = 15 * 60 * 1000) {
-    const cached = cache.get(url);
-    if (cached && (Date.now() - cached.timestamp < ttlMs)) {
-        return cached.data;
+async function fetchWithCache(url, ttlMs = 60 * 60 * 1000) {
+    // 1. In-memory check
+    const mem = memCache.get(url);
+    if (mem && (Date.now() - mem.timestamp < ttlMs)) {
+        return mem.data;
     }
+
+    // 2. SessionStorage check (persists across page reloads)
+    try {
+        const storageKey = `tmdb_cache_${url}`;
+        const raw = sessionStorage.getItem(storageKey);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Date.now() - parsed.timestamp < ttlMs) {
+                memCache.set(url, parsed);
+                return parsed.data;
+            }
+        }
+    } catch {}
 
     const res = await fetch(url);
     if (!res.ok) {
         throw new Error(`TMDB fetch failed with status ${res.status}`);
     }
     const data = await res.json();
-    cache.set(url, { data, timestamp: Date.now() });
+    const entry = { data, timestamp: Date.now() };
+    memCache.set(url, entry);
+    try {
+        sessionStorage.setItem(`tmdb_cache_${url}`, JSON.stringify(entry));
+    } catch {}
     return data;
 }
 

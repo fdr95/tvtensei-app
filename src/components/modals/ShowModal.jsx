@@ -74,7 +74,10 @@ export default function ShowModal({ selectedShow, onClose, isFullscreen, toggleF
         const batch = writeBatch(db);
 
         if (isFullyWatched) {
-            watchedInSeason.forEach(w => batch.delete(doc(db, 'users', currentUid, 'watched_episodes', w.id)));
+            watchedInSeason.forEach(w => {
+                const ids = w.allDocIds || [w.id];
+                ids.forEach(docId => batch.delete(doc(db, 'users', currentUid, 'watched_episodes', docId)));
+            });
             await batch.commit();
         } else {
             let eps = seasonEpisodes[season.season_number];
@@ -93,11 +96,12 @@ export default function ShowModal({ selectedShow, onClose, isFullscreen, toggleF
             if (eps) {
                 eps.forEach(ep => {
                     if (!getWatchedEpisodeData(selectedShow.id, ep.season_number, ep.episode_number)) {
-                        batch.set(doc(db, 'users', currentUid, 'watched_episodes', ep.id.toString()), {
-                            show_id: selectedShow.id,
-                            season_number: ep.season_number,
-                            episode_number: ep.episode_number,
-                            runtime: ep.runtime || 0,
+                        const compositeId = `${Number(selectedShow.id)}_S${Number(ep.season_number)}E${Number(ep.episode_number)}`;
+                        batch.set(doc(db, 'users', currentUid, 'watched_episodes', compositeId), {
+                            show_id: Number(selectedShow.id),
+                            season_number: Number(ep.season_number),
+                            episode_number: Number(ep.episode_number),
+                            runtime: Number(ep.runtime) || 0,
                             watched_at: new Date().toISOString()
                         });
                     }

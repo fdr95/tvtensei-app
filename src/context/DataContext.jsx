@@ -4,7 +4,8 @@ import {
     setDoc, 
     deleteDoc, 
     collection, 
-    onSnapshot 
+    onSnapshot,
+    writeBatch
 } from "firebase/firestore";
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
@@ -45,7 +46,7 @@ export function DataProvider({ children }) {
     const [stats, setStats] = useState({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
     const [isCalculatingStats, setIsCalculatingStats] = useState(false);
 
-    // Real-time Firestore Subscriptions
+    // Real-time Firestore Subscriptions with In-Memory Deduplication
     useEffect(() => {
         if (!currentUid || !db) {
             setSavedShowsData([]);
@@ -65,7 +66,30 @@ export function DataProvider({ children }) {
 
         const unsubEps = onSnapshot(
             collection(db, 'users', currentUid, 'watched_episodes'), 
-            (snap) => setWatchedEpisodesData(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+            (snap) => {
+                const uniqueMap = new Map();
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    const showId = Number(data.show_id);
+                    const seasonNum = Number(data.season_number);
+                    const epNum = Number(data.episode_number);
+                    const key = `${showId}_S${seasonNum}E${epNum}`;
+
+                    if (!uniqueMap.has(key)) {
+                        uniqueMap.set(key, { 
+                            id: d.id, 
+                            allDocIds: [d.id], 
+                            ...data, 
+                            show_id: showId, 
+                            season_number: seasonNum, 
+                            episode_number: epNum 
+                        });
+                    } else {
+                        uniqueMap.get(key).allDocIds.push(d.id);
+                    }
+                });
+                setWatchedEpisodesData(Array.from(uniqueMap.values()));
+            }
         );
 
         const unsubMovies = onSnapshot(
@@ -118,7 +142,7 @@ export function DataProvider({ children }) {
         setHistoryShows(flatShows);
     }, [savedShowsData, watchedEpisodesData]);
 
-    // Optimized, targeted Watch Next Queue Calculation
+    // Robust Watch Next: finds the FIRST unwatched episode for each active show
     const isBuildingWatchNext = useRef(false);
     useEffect(() => {
         let isMounted = true;
@@ -142,62 +166,50 @@ export function DataProvider({ children }) {
                 // Candidates for Watch Next: any saved show with at least 1 watched episode that isn't hidden
                 const candidateShows = historyShows.filter(s => s.watched_count > 0 && !s.hidden_from_watch_next);
 
-                // Process in parallel batches of 8
                 for (let i = 0; i < candidateShows.length; i += 8) {
                     const chunk = candidateShows.slice(i, i + 8);
                     const promises = chunk.map(async (show) => {
                         const watchedEps = watchedEpisodesData.filter(ep => Number(ep.show_id) === Number(show.id));
                         if (watchedEps.length === 0) return null;
 
-                        // Find highest watched episode numerically
-                        const highest = watchedEps.reduce((prev, curr) => {
-                            const prevS = Number(prev.season_number) || 0;
-                            const currS = Number(curr.season_number) || 0;
-                            const prevE = Number(prev.episode_number) || 0;
-                            const currE = Number(curr.episode_number) || 0;
-
-                            if (currS > prevS) return curr;
-                            if (currS === prevS && currE > prevE) return curr;
-                            return prev;
-                        });
-
-                        const targetSeason = parseInt(highest.season_number, 10);
-                        let nextEpInfo = null;
+                        // Create quick lookup set of all watched episodes: "seasonNumber_episodeNumber"
+                        const watchedSet = new Set(
+                            watchedEps.map(e => `${Number(e.season_number)}_${Number(e.episode_number)}`)
+                        );
 
                         try {
-                            // Fetch show metadata once (cached in sessionStorage)
                             const showDetails = await getShowDetails(show.id);
                             
                             // If show is Ended and user watched all episodes, skip
                             const isShowEnded = ['Ended', 'Canceled'].includes(showDetails.status);
-                            if (isShowEnded && showDetails.number_of_episodes && show.watched_count >= showDetails.number_of_episodes) {
+                            if (isShowEnded && showDetails.number_of_episodes && watchedEps.length >= showDetails.number_of_episodes) {
                                 return null;
                             }
 
-                            // 1. Look in the current season for next episode
-                            const currentSeasonData = await getSeasonDetails(show.id, targetSeason);
-                            if (currentSeasonData && currentSeasonData.episodes) {
-                                const upcomingInSeason = currentSeasonData.episodes.filter(e => Number(e.episode_number) > Number(highest.episode_number));
-                                if (upcomingInSeason.length > 0) {
-                                    upcomingInSeason.sort((a, b) => Number(a.episode_number) - Number(b.episode_number));
-                                    nextEpInfo = upcomingInSeason[0];
-                                }
-                            }
+                            // Get all valid seasons in order (Season 1, 2, 3...)
+                            const validSeasons = (showDetails.seasons || [])
+                                .filter(s => Number(s.season_number) > 0 && s.episode_count > 0)
+                                .sort((a, b) => Number(a.season_number) - Number(b.season_number));
 
-                            // 2. If current season is complete, check ONLY real existing next seasons from showDetails.seasons
-                            if (!nextEpInfo && showDetails.seasons) {
-                                const nextSeasons = showDetails.seasons
-                                    .filter(s => Number(s.season_number) > targetSeason && s.episode_count > 0)
-                                    .sort((a, b) => Number(a.season_number) - Number(b.season_number));
+                            let nextEpInfo = null;
 
-                                if (nextSeasons.length > 0) {
-                                    const nextSeasonToFetch = nextSeasons[0];
-                                    const nextSeasonData = await getSeasonDetails(show.id, nextSeasonToFetch.season_number);
-                                    if (nextSeasonData && nextSeasonData.episodes && nextSeasonData.episodes.length > 0) {
-                                        nextSeasonData.episodes.sort((a, b) => Number(a.episode_number) - Number(b.episode_number));
-                                        nextEpInfo = nextSeasonData.episodes[0];
+                            // Find the FIRST season that has an unwatched episode
+                            for (const season of validSeasons) {
+                                const seasonData = await getSeasonDetails(show.id, season.season_number);
+                                if (seasonData && seasonData.episodes && seasonData.episodes.length > 0) {
+                                    const episodesSorted = [...seasonData.episodes].sort(
+                                        (a, b) => Number(a.episode_number) - Number(b.episode_number)
+                                    );
+
+                                    for (const ep of episodesSorted) {
+                                        const key = `${Number(season.season_number)}_${Number(ep.episode_number)}`;
+                                        if (!watchedSet.has(key)) {
+                                            nextEpInfo = ep;
+                                            break;
+                                        }
                                     }
                                 }
+                                if (nextEpInfo) break;
                             }
 
                             if (nextEpInfo) {
@@ -407,11 +419,19 @@ export function DataProvider({ children }) {
     const toggleWatchedEpisode = async (ep, showId, optionalShowDetails = null) => {
         if (!currentUid || !db) return;
         const existing = getWatchedEpisodeData(showId, ep.season_number, ep.episode_number);
+        const compositeId = `${Number(showId)}_S${Number(ep.season_number)}E${Number(ep.episode_number)}`;
+
         try {
             if (existing) {
-                await deleteDoc(doc(db, 'users', currentUid, 'watched_episodes', existing.id));
+                // Delete all duplicate document IDs
+                const batch = writeBatch(db);
+                const idsToDelete = existing.allDocIds && existing.allDocIds.length > 0 ? existing.allDocIds : [existing.id];
+                idsToDelete.forEach(id => {
+                    batch.delete(doc(db, 'users', currentUid, 'watched_episodes', id));
+                });
+                await batch.commit();
             } else {
-                await setDoc(doc(db, 'users', currentUid, 'watched_episodes', ep.id.toString()), {
+                await setDoc(doc(db, 'users', currentUid, 'watched_episodes', compositeId), {
                     show_id: Number(showId),
                     season_number: Number(ep.season_number),
                     episode_number: Number(ep.episode_number),

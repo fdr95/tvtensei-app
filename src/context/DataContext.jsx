@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
     doc, 
     setDoc, 
@@ -8,6 +8,8 @@ import {
 } from "firebase/firestore";
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
+import { getShowDetails, getSeasonDetails } from '../services/tmdb';
+import { calculateWatchStats } from '../utils/stats';
 
 const DataContext = createContext(null);
 
@@ -19,12 +21,26 @@ export function DataProvider({ children }) {
     const [savedMoviesData, setSavedMoviesData] = useState([]);
     const [historyShows, setHistoryShows] = useState([]);
 
+    // Derived State kept in memory across tab switches
+    const [watchNextList, setWatchNextList] = useState([]);
+    const [isLoadingWatchNext, setIsLoadingWatchNext] = useState(false);
+    
+    const [upcomingEpisodes, setUpcomingEpisodes] = useState([]);
+    const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+
+    const [stats, setStats] = useState({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
+    const [isCalculatingStats, setIsCalculatingStats] = useState(false);
+
     // Real-time Firestore Subscriptions
     useEffect(() => {
         if (!currentUid || !db) {
             setSavedShowsData([]);
             setWatchedEpisodesData([]);
             setSavedMoviesData([]);
+            setHistoryShows([]);
+            setWatchNextList([]);
+            setUpcomingEpisodes([]);
+            setStats({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
             return;
         }
 
@@ -57,17 +73,19 @@ export function DataProvider({ children }) {
         const showLastWatched = {};
 
         watchedEpisodesData.forEach(ep => {
-            showCounts[ep.show_id] = (showCounts[ep.show_id] || 0) + 1;
-            if (!showLastWatched[ep.show_id] || new Date(ep.watched_at) > new Date(showLastWatched[ep.show_id])) {
-                showLastWatched[ep.show_id] = ep.watched_at;
+            const sId = Number(ep.show_id);
+            showCounts[sId] = (showCounts[sId] || 0) + 1;
+            if (!showLastWatched[sId] || new Date(ep.watched_at) > new Date(showLastWatched[sId])) {
+                showLastWatched[sId] = ep.watched_at;
             }
         });
 
         for (const show of savedShowsData) {
-            const count = showCounts[show.id] || 0;
+            const showId = Number(show.id);
+            const count = showCounts[showId] || 0;
             const s = { ...show, watched_count: count };
 
-            s.last_watched_at = showLastWatched[show.id] || show.added_at || 0;
+            s.last_watched_at = showLastWatched[showId] || show.added_at || 0;
             s.year = show.first_air_date ? parseInt(show.first_air_date.substring(0, 4)) : 0;
 
             if (count === 0) {
@@ -86,12 +104,236 @@ export function DataProvider({ children }) {
         setHistoryShows(flatShows);
     }, [savedShowsData, watchedEpisodesData]);
 
+    // Watch Next Queue Calculation
+    const isBuildingWatchNext = useRef(false);
+    useEffect(() => {
+        let isMounted = true;
+
+        const buildWatchNext = async () => {
+            if (historyShows.length === 0) {
+                setWatchNextList([]);
+                return;
+            }
+            if (isBuildingWatchNext.current) return;
+            isBuildingWatchNext.current = true;
+            setIsLoadingWatchNext(true);
+
+            try {
+                const queue = [];
+                const today = new Date(); 
+                today.setHours(0,0,0,0);
+                const tomorrow = new Date(today); 
+                tomorrow.setDate(tomorrow.getDate() + 1);
+
+                // Filter in-progress shows that aren't hidden
+                const inProgressShows = historyShows.filter(s => s.status === 'inProgress' && !s.hidden_from_watch_next);
+
+                for (let i = 0; i < inProgressShows.length; i += 5) {
+                    const chunk = inProgressShows.slice(i, i + 5);
+                    const promises = chunk.map(async (show) => {
+                        const watchedEps = watchedEpisodesData.filter(ep => Number(ep.show_id) === Number(show.id));
+                        if (watchedEps.length === 0) return null;
+
+                        // Find highest watched episode numerically
+                        const highest = watchedEps.reduce((prev, curr) => {
+                            const prevS = Number(prev.season_number) || 0;
+                            const currS = Number(curr.season_number) || 0;
+                            const prevE = Number(prev.episode_number) || 0;
+                            const currE = Number(curr.episode_number) || 0;
+
+                            if (currS > prevS) return curr;
+                            if (currS === prevS && currE > prevE) return curr;
+                            return prev;
+                        });
+
+                        const targetSeason = parseInt(highest.season_number, 10);
+                        let nextEpInfo = null;
+
+                        try {
+                            // 1. First look in the current season for next episode
+                            const data = await getSeasonDetails(show.id, targetSeason);
+                            if (data && data.episodes) {
+                                const upcomingInSeason = data.episodes.filter(e => Number(e.episode_number) > Number(highest.episode_number));
+                                if (upcomingInSeason.length > 0) {
+                                    upcomingInSeason.sort((a, b) => Number(a.episode_number) - Number(b.episode_number));
+                                    nextEpInfo = upcomingInSeason[0];
+                                }
+                            }
+
+                            // 2. If season is complete, scan ahead up to 25 seasons (supports long anime like Bleach, One Piece)
+                            if (!nextEpInfo) {
+                                for (let sOffset = 1; sOffset <= 25; sOffset++) {
+                                    const nextSeasonNum = targetSeason + sOffset;
+                                    try {
+                                        const dataNext = await getSeasonDetails(show.id, nextSeasonNum);
+                                        if (dataNext && dataNext.episodes && dataNext.episodes.length > 0) {
+                                            dataNext.episodes.sort((a, b) => Number(a.episode_number) - Number(b.episode_number));
+                                            nextEpInfo = dataNext.episodes[0];
+                                            break;
+                                        }
+                                    } catch {}
+                                }
+                            }
+
+                            if (nextEpInfo) {
+                                let stateText = '';
+                                let isLocked = false;
+
+                                if (nextEpInfo.air_date) {
+                                    const airDateObj = new Date(nextEpInfo.air_date);
+                                    airDateObj.setHours(0,0,0,0);
+
+                                    if (airDateObj > tomorrow) {
+                                        // Episode is in the future
+                                        return null;
+                                    } else if (airDateObj.getTime() === today.getTime()) {
+                                        stateText = 'Airs Today';
+                                        isLocked = true;
+                                    } else if (airDateObj.getTime() === tomorrow.getTime()) {
+                                        stateText = 'Airs Tomorrow';
+                                        isLocked = true;
+                                    }
+                                }
+
+                                return { show, episode: nextEpInfo, stateText, isLocked };
+                            }
+                        } catch (e) {
+                            console.error("Watch next calculation error:", show.name, e);
+                        }
+                        return null;
+                    });
+
+                    const chunkResults = await Promise.all(promises);
+                    queue.push(...chunkResults.filter(Boolean));
+                    await new Promise(r => setTimeout(r, 60));
+                }
+
+                queue.sort((a, b) => {
+                    const dateA = a.episode.air_date ? new Date(a.episode.air_date) : 0;
+                    const dateB = b.episode.air_date ? new Date(b.episode.air_date) : 0;
+                    return dateB - dateA;
+                });
+
+                if (isMounted) {
+                    setWatchNextList(queue);
+                }
+            } catch (err) {
+                console.error("Error in buildWatchNext:", err);
+            } finally {
+                isBuildingWatchNext.current = false;
+                if (isMounted) setIsLoadingWatchNext(false);
+            }
+        };
+
+        const timer = setTimeout(buildWatchNext, 300);
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, [historyShows, watchedEpisodesData]);
+
+    // Calendar & Silent Sync (Cached in Context)
+    useEffect(() => {
+        let isMounted = true;
+        const fetchUpcomingAndSync = async () => {
+            if (savedShowsData.length === 0) {
+                setUpcomingEpisodes([]);
+                return;
+            }
+
+            setIsLoadingCalendar(true);
+            try {
+                const results = [];
+                const activeShows = savedShowsData.filter(s => !['Ended', 'Canceled'].includes(s.show_status));
+
+                for (let i = 0; i < activeShows.length; i += 10) {
+                    const chunk = activeShows.slice(i, i + 10);
+                    const promises = chunk.map(async (show) => {
+                        try {
+                            const data = await getShowDetails(show.id);
+                            if (currentUid && db && (data.number_of_episodes !== show.total_episodes || data.status !== show.show_status)) {
+                                setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { 
+                                    total_episodes: data.number_of_episodes || null, 
+                                    show_status: data.status || null 
+                                }, { merge: true });
+                            }
+                            if (data.next_episode_to_air) {
+                                return { 
+                                    showId: data.id, 
+                                    showName: data.name, 
+                                    posterPath: data.poster_path, 
+                                    episode: data.next_episode_to_air,
+                                    showData: { id: data.id, name: data.name, poster_path: data.poster_path }
+                                };
+                            }
+                        } catch {}
+                        return null;
+                    });
+
+                    const chunkResults = await Promise.all(promises);
+                    results.push(...chunkResults.filter(Boolean));
+                    await new Promise(r => setTimeout(r, 100));
+                }
+
+                const today = new Date(); 
+                today.setHours(0,0,0,0);
+                const tomorrow = new Date(today); 
+                tomorrow.setDate(tomorrow.getDate() + 1);
+
+                const calendarEps = results.filter(item => {
+                    const airDate = new Date(item.episode.air_date); 
+                    airDate.setHours(0,0,0,0);
+                    return airDate > tomorrow;
+                });
+
+                calendarEps.sort((a, b) => new Date(a.episode.air_date) - new Date(b.episode.air_date));
+                if (isMounted) setUpcomingEpisodes(calendarEps);
+            } catch (error) {
+                console.error("Calendar sync error:", error);
+            } finally {
+                if (isMounted) setIsLoadingCalendar(false);
+            }
+        };
+
+        const timer = setTimeout(fetchUpcomingAndSync, 1000);
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, [savedShowsData, currentUid]);
+
+    // Statistics Calculation (Cached in Context)
+    useEffect(() => {
+        let isMounted = true;
+        const fetchStats = async () => {
+            if (!watchedEpisodesData || watchedEpisodesData.length === 0) {
+                setStats({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
+                return;
+            }
+            setIsCalculatingStats(true);
+            try {
+                const calculated = await calculateWatchStats(watchedEpisodesData, savedShowsData);
+                if (isMounted) setStats(calculated);
+            } catch (err) {
+                console.error("Stats calculation error:", err);
+            } finally {
+                if (isMounted) setIsCalculatingStats(false);
+            }
+        };
+
+        const timer = setTimeout(fetchStats, 600);
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, [watchedEpisodesData, savedShowsData]);
+
     // Helpers
-    const isShowSaved = (id) => savedShowsData.some(s => s.id === id);
-    const isShowHidden = (id) => savedShowsData.find(s => s.id === id)?.hidden_from_watch_next === true;
-    const isMovieSaved = (id) => savedMoviesData.some(m => m.id === id);
+    const isShowSaved = (id) => savedShowsData.some(s => Number(s.id) === Number(id));
+    const isShowHidden = (id) => savedShowsData.find(s => Number(s.id) === Number(id))?.hidden_from_watch_next === true;
+    const isMovieSaved = (id) => savedMoviesData.some(m => Number(m.id) === Number(id));
     const getWatchedEpisodeData = (showId, sNum, eNum) => 
-        watchedEpisodesData.find(w => w.show_id === showId && w.season_number === sNum && w.episode_number === eNum);
+        watchedEpisodesData.find(w => Number(w.show_id) === Number(showId) && Number(w.season_number) === Number(sNum) && Number(w.episode_number) === Number(eNum));
 
     // Actions
     const toggleLibraryShow = async (show, showDetails = null) => {
@@ -137,10 +379,10 @@ export function DataProvider({ children }) {
                 await deleteDoc(doc(db, 'users', currentUid, 'watched_episodes', existing.id));
             } else {
                 await setDoc(doc(db, 'users', currentUid, 'watched_episodes', ep.id.toString()), {
-                    show_id: showId,
-                    season_number: ep.season_number,
-                    episode_number: ep.episode_number,
-                    runtime: ep.runtime || 0,
+                    show_id: Number(showId),
+                    season_number: Number(ep.season_number),
+                    episode_number: Number(ep.episode_number),
+                    runtime: Number(ep.runtime) || 0,
                     watched_at: new Date().toISOString()
                 });
                 
@@ -150,7 +392,7 @@ export function DataProvider({ children }) {
                     total_episodes: optionalShowDetails?.number_of_episodes || optionalShowDetails?.total_episodes || null, 
                     show_status: optionalShowDetails?.status || optionalShowDetails?.show_status || null, 
                     first_air_date: optionalShowDetails?.first_air_date || null,
-                    hidden_from_watch_next: false // Auto un-hide when watching new episode
+                    hidden_from_watch_next: false
                 };
                 
                 if (!isShowSaved(showId)) {
@@ -222,6 +464,12 @@ export function DataProvider({ children }) {
             watchedEpisodesData,
             savedMoviesData,
             historyShows,
+            watchNextList,
+            isLoadingWatchNext,
+            upcomingEpisodes,
+            isLoadingCalendar,
+            stats,
+            isCalculatingStats,
             isShowSaved,
             isShowHidden,
             isMovieSaved,

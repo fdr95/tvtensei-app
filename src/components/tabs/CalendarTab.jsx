@@ -1,99 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { doc, setDoc } from "firebase/firestore";
-import { db } from '../../services/firebase';
-import { useAuth } from '../../context/AuthContext';
+import React from 'react';
 import { useData } from '../../context/DataContext';
-import { TMDB_IMG_URL, getShowDetails } from '../../services/tmdb';
+import { TMDB_IMG_URL } from '../../services/tmdb';
 import { formatDateDisplay } from '../../utils/formatters';
 
 export default function CalendarTab({ openShowModal }) {
-    const { currentUid } = useAuth();
-    const { savedShowsData } = useData();
-
-    const [upcomingEpisodes, setUpcomingEpisodes] = useState([]);
-    const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
-
-    useEffect(() => {
-        let isMounted = true;
-        const fetchUpcomingAndSync = async () => {
-            if (!savedShowsData || savedShowsData.length === 0) {
-                setUpcomingEpisodes([]);
-                return;
-            }
-
-            setIsLoadingCalendar(true);
-            try {
-                const results = [];
-                // Only sync shows that are active to save API calls
-                const activeShows = savedShowsData.filter(s => !['Ended', 'Canceled'].includes(s.show_status));
-
-                for (let i = 0; i < activeShows.length; i += 10) {
-                    const chunk = activeShows.slice(i, i + 10);
-                    const promises = chunk.map(async (show) => {
-                        try {
-                            const data = await getShowDetails(show.id);
-                            // Silent Sync
-                            if (currentUid && db && (data.number_of_episodes !== show.total_episodes || data.status !== show.show_status)) {
-                                setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { 
-                                    total_episodes: data.number_of_episodes || null, 
-                                    show_status: data.status || null 
-                                }, { merge: true });
-                            }
-                            if (data.next_episode_to_air) {
-                                return { 
-                                    showId: data.id, 
-                                    showName: data.name, 
-                                    posterPath: data.poster_path, 
-                                    episode: data.next_episode_to_air,
-                                    showData: { id: data.id, name: data.name, poster_path: data.poster_path }
-                                };
-                            }
-                        } catch {}
-                        return null;
-                    });
-
-                    const chunkResults = await Promise.all(promises);
-                    results.push(...chunkResults.filter(Boolean));
-                    await new Promise(r => setTimeout(r, 150));
-                }
-
-                const today = new Date(); 
-                today.setHours(0,0,0,0);
-                const tomorrow = new Date(today); 
-                tomorrow.setDate(tomorrow.getDate() + 1);
-
-                const calendarEps = results.filter(item => {
-                    const airDate = new Date(item.episode.air_date); 
-                    airDate.setHours(0,0,0,0);
-                    return airDate > tomorrow;
-                });
-
-                calendarEps.sort((a, b) => new Date(a.episode.air_date) - new Date(b.episode.air_date));
-                if (isMounted) {
-                    setUpcomingEpisodes(calendarEps);
-                }
-            } catch (error) {
-                console.error("Error in calendar fetch:", error);
-            } finally {
-                if (isMounted) {
-                    setIsLoadingCalendar(false);
-                }
-            }
-        };
-
-        const timer = setTimeout(fetchUpcomingAndSync, 500);
-        return () => {
-            isMounted = false;
-            clearTimeout(timer);
-        };
-    }, [savedShowsData, currentUid]);
+    const { upcomingEpisodes, isLoadingCalendar } = useData();
 
     return (
         <div className="p-4 md:p-8 animate-fade-in pb-24">
             <h2 className="text-3xl font-bold mb-2">Calendar</h2>
             <p className="text-textMuted mb-8">Upcoming episodes!</p>
 
-            {isLoadingCalendar ? (
+            {isLoadingCalendar && upcomingEpisodes.length === 0 ? (
                 <div className="flex justify-center p-10">
                     <i className="fas fa-spinner fa-spin text-primary text-4xl"></i>
                 </div>

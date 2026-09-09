@@ -125,11 +125,11 @@ export function DataProvider({ children }) {
                 const tomorrow = new Date(today); 
                 tomorrow.setDate(tomorrow.getDate() + 1);
 
-                // Filter in-progress shows that aren't hidden
-                const inProgressShows = historyShows.filter(s => s.status === 'inProgress' && !s.hidden_from_watch_next);
+                // Candidates for Watch Next: any saved show with at least 1 watched episode that isn't hidden
+                const candidateShows = historyShows.filter(s => s.watched_count > 0 && !s.hidden_from_watch_next);
 
-                for (let i = 0; i < inProgressShows.length; i += 5) {
-                    const chunk = inProgressShows.slice(i, i + 5);
+                for (let i = 0; i < candidateShows.length; i += 5) {
+                    const chunk = candidateShows.slice(i, i + 5);
                     const promises = chunk.map(async (show) => {
                         const watchedEps = watchedEpisodesData.filter(ep => Number(ep.show_id) === Number(show.id));
                         if (watchedEps.length === 0) return null;
@@ -205,7 +205,7 @@ export function DataProvider({ children }) {
 
                     const chunkResults = await Promise.all(promises);
                     queue.push(...chunkResults.filter(Boolean));
-                    await new Promise(r => setTimeout(r, 60));
+                    await new Promise(r => setTimeout(r, 50));
                 }
 
                 queue.sort((a, b) => {
@@ -232,7 +232,7 @@ export function DataProvider({ children }) {
         };
     }, [historyShows, watchedEpisodesData]);
 
-    // Calendar & Silent Sync (Cached in Context)
+    // Calendar & Universal Silent Sync (Updates show metadata and calendar episodes)
     useEffect(() => {
         let isMounted = true;
         const fetchUpcomingAndSync = async () => {
@@ -244,19 +244,21 @@ export function DataProvider({ children }) {
             setIsLoadingCalendar(true);
             try {
                 const results = [];
-                const activeShows = savedShowsData.filter(s => !['Ended', 'Canceled'].includes(s.show_status));
 
-                for (let i = 0; i < activeShows.length; i += 10) {
-                    const chunk = activeShows.slice(i, i + 10);
+                for (let i = 0; i < savedShowsData.length; i += 8) {
+                    const chunk = savedShowsData.slice(i, i + 8);
                     const promises = chunk.map(async (show) => {
                         try {
                             const data = await getShowDetails(show.id);
+                            
+                            // Auto-heal / Silent sync metadata in Firestore (total_episodes, show_status)
                             if (currentUid && db && (data.number_of_episodes !== show.total_episodes || data.status !== show.show_status)) {
                                 setDoc(doc(db, 'users', currentUid, 'shows', show.id.toString()), { 
                                     total_episodes: data.number_of_episodes || null, 
                                     show_status: data.status || null 
                                 }, { merge: true });
                             }
+                            
                             if (data.next_episode_to_air) {
                                 return { 
                                     showId: data.id, 
@@ -272,7 +274,7 @@ export function DataProvider({ children }) {
 
                     const chunkResults = await Promise.all(promises);
                     results.push(...chunkResults.filter(Boolean));
-                    await new Promise(r => setTimeout(r, 100));
+                    await new Promise(r => setTimeout(r, 80));
                 }
 
                 const today = new Date(); 
@@ -295,7 +297,7 @@ export function DataProvider({ children }) {
             }
         };
 
-        const timer = setTimeout(fetchUpcomingAndSync, 1000);
+        const timer = setTimeout(fetchUpcomingAndSync, 800);
         return () => {
             isMounted = false;
             clearTimeout(timer);

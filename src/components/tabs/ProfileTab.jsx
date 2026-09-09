@@ -1,42 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { calculateWatchStats } from '../../utils/stats';
 import { importTvTimeZip } from '../../utils/tvTimeImport';
 
 export default function ProfileTab({ modalDefaultFS, setModalDefaultFS }) {
     const { user, currentUid, logout } = useAuth();
-    const { watchedEpisodesData, savedShowsData } = useData();
+    const { stats, isCalculatingStats } = useData();
 
-    const [stats, setStats] = useState({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
-    const [isCalculatingStats, setIsCalculatingStats] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [importStatus, setImportStatus] = useState("");
-
-    useEffect(() => {
-        let isMounted = true;
-        const fetchStats = async () => {
-            if (!watchedEpisodesData || watchedEpisodesData.length === 0) {
-                setStats({ months: 0, days: 0, hours: 0, totalMins: 0, topShows: [] });
-                return;
-            }
-            setIsCalculatingStats(true);
-            try {
-                const calculated = await calculateWatchStats(watchedEpisodesData, savedShowsData);
-                if (isMounted) setStats(calculated);
-            } catch (err) {
-                console.error("Error calculating stats:", err);
-            } finally {
-                if (isMounted) setIsCalculatingStats(false);
-            }
-        };
-
-        const timer = setTimeout(fetchStats, 500);
-        return () => {
-            isMounted = false;
-            clearTimeout(timer);
-        };
-    }, [watchedEpisodesData, savedShowsData]);
 
     const handleZipImport = async (event) => {
         const file = event.target.files[0];
@@ -66,7 +38,7 @@ export default function ProfileTab({ modalDefaultFS, setModalDefaultFS }) {
             <p className="text-textMuted mb-8">Your Otaku statistics and settings.</p>
             
             {/* Stats Dashboard */}
-            {isCalculatingStats ? (
+            {isCalculatingStats && stats.totalMins === 0 ? (
                 <div className="flex flex-col items-center justify-center p-8 border border-surfaceLight rounded-xl mb-8">
                     <i className="fas fa-satellite-dish fa-spin text-primary text-3xl mb-3"></i>
                     <p className="text-textMuted text-sm">Calculating watch time...</p>

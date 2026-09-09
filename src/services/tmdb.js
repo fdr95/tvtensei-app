@@ -3,10 +3,10 @@ export const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 export const TMDB_IMG_URL = 'https://image.tmdb.org/t/p/w500';
 export const TMDB_BACKDROP_URL = 'https://image.tmdb.org/t/p/w1280';
 
-// Simple in-memory cache to prevent redundant TMDB API requests
+// In-memory cache with configurable TTL (default 15 minutes)
 const cache = new Map();
 
-async function fetchWithCache(url, ttlMs = 5 * 60 * 1000) {
+async function fetchWithCache(url, ttlMs = 15 * 60 * 1000) {
     const cached = cache.get(url);
     if (cached && (Date.now() - cached.timestamp < ttlMs)) {
         return cached.data;
@@ -70,6 +70,57 @@ export async function getTrendingMovies() {
 
 export async function getMovieRecommendations(movieId) {
     const url = `${TMDB_BASE_URL}/movie/${movieId}/recommendations?api_key=${TMDB_API_KEY}&language=en-US`;
+    try {
+        const data = await fetchWithCache(url);
+        return data.results || [];
+    } catch {
+        return [];
+    }
+}
+
+// Discover Endpoints
+export async function getTrendingShows() {
+    const url = `${TMDB_BASE_URL}/trending/tv/week?api_key=${TMDB_API_KEY}`;
+    try {
+        const data = await fetchWithCache(url);
+        return data.results || [];
+    } catch {
+        return [];
+    }
+}
+
+export async function getPopularShows() {
+    const url = `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
+    try {
+        const data = await fetchWithCache(url);
+        return data.results || [];
+    } catch {
+        return [];
+    }
+}
+
+export async function getTopRatedShows() {
+    const url = `${TMDB_BASE_URL}/tv/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
+    try {
+        const data = await fetchWithCache(url);
+        return data.results || [];
+    } catch {
+        return [];
+    }
+}
+
+export async function getPopularAnime() {
+    const url = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=1`;
+    try {
+        const data = await fetchWithCache(url);
+        return data.results || [];
+    } catch {
+        return [];
+    }
+}
+
+export async function getShowsByGenre(genreId) {
+    const url = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&with_genres=${genreId}&sort_by=popularity.desc&page=1`;
     try {
         const data = await fetchWithCache(url);
         return data.results || [];

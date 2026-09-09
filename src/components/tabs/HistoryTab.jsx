@@ -6,13 +6,19 @@ import MediaCard from '../common/MediaCard';
 export default function HistoryTab({ openShowModal }) {
     const { historyShows } = useData();
 
+    const [searchFilter, setSearchFilter] = useState('');
     const [historyViewMode, setHistoryViewMode] = useState('list');
     const [historySortBy, setHistorySortBy] = useState('recent');
     const [historySortDesc, setHistorySortDesc] = useState(true);
     const [historyFilterStatus, setHistoryFilterStatus] = useState('inProgress');
 
     const filteredAndSortedHistory = [...historyShows]
-        .filter(show => historyFilterStatus === 'all' || show.status === historyFilterStatus)
+        .filter(show => {
+            const matchesStatus = historyFilterStatus === 'all' || show.status === historyFilterStatus;
+            const matchesSearch = !searchFilter.trim() || 
+                (show.name && show.name.toLowerCase().includes(searchFilter.trim().toLowerCase()));
+            return matchesStatus && matchesSearch;
+        })
         .sort((a, b) => {
             let res = 0;
             if (historySortBy === 'recent') res = new Date(a.last_watched_at || 0) - new Date(b.last_watched_at || 0);
@@ -26,12 +32,34 @@ export default function HistoryTab({ openShowModal }) {
 
     return (
         <div className="p-4 md:p-8 animate-fade-in pb-24">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold mb-2">Library</h2>
-                    <p className="text-textMuted">Manage your entire catalog.</p>
+            <div className="flex flex-col mb-8 gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-3xl font-bold mb-2">Library</h2>
+                        <p className="text-textMuted">Manage your entire catalog ({historyShows.length} shows).</p>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative w-full md:w-72">
+                        <input
+                            type="text"
+                            value={searchFilter}
+                            onChange={(e) => setSearchFilter(e.target.value)}
+                            placeholder="Filter library shows..."
+                            className="w-full bg-surface border border-surfaceLight rounded-xl py-2.5 px-4 pl-10 text-white text-sm focus:outline-none focus:border-primary transition-all"
+                        />
+                        <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-textMuted text-sm"></i>
+                        {searchFilter && (
+                            <button
+                                onClick={() => setSearchFilter('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white"
+                            >
+                                <i className="fas fa-times text-xs"></i>
+                            </button>
+                        )}
+                    </div>
                 </div>
-                
+
                 {/* Filters and View Controls */}
                 <div className="flex flex-wrap items-center gap-3 bg-surfaceLight/10 p-2 rounded-xl border border-surfaceLight">
                     <div className="flex items-center gap-2 bg-surface text-white text-sm rounded-lg px-3 py-2 border border-surfaceLight focus-within:border-primary transition-colors">
@@ -151,7 +179,7 @@ export default function HistoryTab({ openShowModal }) {
             ) : (
                 <div className="text-center p-10 border-2 border-dashed border-surfaceLight rounded-xl text-textMuted flex flex-col items-center">
                     <i className="fas fa-filter text-5xl mb-4 opacity-30"></i>
-                    <p>No shows found for the selected filters.</p>
+                    <p>No shows found for the selected filters or search query.</p>
                 </div>
             )}
         </div>

@@ -146,7 +146,7 @@ function MainApp() {
                     <div className="max-w-6xl mx-auto">
                         {activeTab === 'watch-next' && <WatchNextTab openShowModal={openShowModal} />}
                         {activeTab === 'history' && <HistoryTab openShowModal={openShowModal} />}
-                        {activeTab === 'discover' && <DiscoverTab />}
+                        {activeTab === 'discover' && <DiscoverTab openShowModal={openShowModal} />}
                         {activeTab === 'search' && <SearchTab openShowModal={openShowModal} />}
                         {activeTab === 'movies' && (
                             <MovieHub 
